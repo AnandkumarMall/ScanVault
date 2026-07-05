@@ -1,0 +1,78 @@
+name: scanvault
+description: "ScanVault — a fast, fully-offline document scanner. No login, no cloud."
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  # dartcv4 hooks/native-assets require a recent SDK (see PLAN.md §4).
+  sdk: ">=3.10.0 <4.0.0"
+  flutter: ">=3.38.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management (PLAN.md §4 — decided)
+  flutter_riverpod: ^2.6.1
+
+  # Camera capture + live preview (Phase 2)
+  camera: ^0.11.0
+
+  # OpenCV: detect / warp / filters — trimmed to imgproc+imgcodecs (Phase 3+, see §7)
+  dartcv4: ^1.1.1
+
+  # Pure-Dart image encode/rotate fallbacks
+  image: ^4.3.0
+
+  # Storage Access Framework: pick folder + persisted permission + read/write (Phase 1)
+  saf_util: ^3.1.0
+  saf_stream: ^3.1.0
+
+  # Store the persisted Vault folder URI token
+  shared_preferences: ^2.3.3
+
+  # Images -> PDF (Phase 6)
+  pdf: ^3.11.1
+  printing: ^5.13.4
+
+  # PDF -> images import (PDFium, offline) (Phase 6)
+  pdfrx: ^1.0.90
+
+  # Android share sheet (Phase 6)
+  share_plus: ^10.1.2
+
+  # UUID document ids + filesystem paths
+  uuid: ^4.5.1
+  path: ^1.9.0
+  path_provider: ^2.1.5
+
+  # Small immutable-value / equality helpers
+  collection: ^1.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+# dartcv4 module trimming — the biggest APK-size lever (PLAN.md §7a).
+# Excluded modules still expose Dart symbols but throw if called — just don't call them.
+hooks:
+  user_defines:
+    dartcv4:
+      include_modules:
+        - imgproc      # edges, warp, filters
+        - imgcodecs    # jpg/png encode/decode
+      exclude_modules:
+        - dnn
+        - contrib
+        - video
+        - videoio
+        - objdetect
+        - features2d
+        - photo
+        - stitching
+        - calib3d
+        - highgui
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,41 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+.pub-cache/
+.pub/
+pubspec.lock            # app: usually committed, but this is a template scaffold; enable if you want lockfile
+**/generated_plugin_registrant.dart
+
+# FVM
+.fvm/flutter_sdk
+.fvm/versions
+
+# Android
+android/.gradle/
+android/local.properties
+android/key.properties
+android/app/*.jks
+android/captures/
+*.keystore
+**/GeneratedPluginRegistrant.*
+
+# IDE
+.idea/
+*.iml
+.vscode/
+!.vscode/launch.json
+
+# OpenCV / dartcv build cache (large SDK download)
+.dartcv/
+debug-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App-generated (never commit user Vault data)
+/exports/
+/cache/

@@ -1,0 +1,255 @@
+import 'package:uuid/uuid.dart';
+
+import '../../core/failure.dart';
+import '../../core/json_utils.dart';
+import '../../domain/models/document.dart';
+import '../../domain/models/index_entry.dart';
+import '../../domain/models/vault_config.dart';
+import 'saf_gateway.dart';
+import 'vault_layout.dart';
+import 'vault_prefs.dart';
+
+/// High-level operations over the Vault. Coordinates the SAF [SafGateway], the
+/// prefs-stored URI ([VaultPrefs]), and the thin/rebuildable index (PLAN.md §3).
+///
+/// A repository instance is bound to one connected Vault. `connect`/`reconnect`
+/// establish that binding; the rest assume it exists.
+class VaultRepository {
+  VaultRepository({
+    required SafGateway gateway,
+    required VaultPrefs prefs,
+    String appVersion = '0.1.0',
+    Uuid uuid = const Uuid(),
+  })  : _gateway = gateway,
+        _prefs = prefs,
+        _appVersion = appVersion,
+        _uuid = uuid;
+
+  final SafGateway _gateway;
+  final VaultPrefs _prefs;
+  final String _appVersion;
+  final Uuid _uuid;
+
+  VaultConfig? _config;
+  // Resolved once per connection to avoid repeated tree walks.
+  String? _rootUri;
+  String? _documentsUri;
+
+  VaultConfig? get config => _config;
+  bool get isConnected => _config != null;
+
+  // ── Connection lifecycle ─────────────────────────────────────────────────
+
+  /// Prompts the user to pick a folder, persists it, and initializes structure.
+  /// Returns null if the user cancels the picker.
+  Future<VaultConfig?> connectViaPicker() async {
+    final picked = await _gateway.pickVaultDirectory();
+    if (picked == null) return null;
+    final config =
+        VaultConfig(treeUri: picked.uri, displayName: picked.name);
+    await _bind(config);
+    await _prefs.save(config);
+    return config;
+  }
+
+  /// Restores a previously-connected Vault from prefs. Returns null if there is
+  /// no saved Vault. Throws [VaultFailure.permissionLost] if the saved grant is
+  /// gone (caller shows the reconnect flow).
+  Future<VaultConfig?> reconnectFromPrefs() async {
+    final saved = _prefs.read();
+    if (saved == null) return null;
+    final ok = await _gateway.hasWritePermission(saved.treeUri);
+    if (!ok) {
+      throw const VaultFailure(
+        FailureKind.permissionLost,
+        'The Vault folder permission is no longer valid. Reconnect the folder.',
+      );
+    }
+    await _bind(saved);
+    return saved;
+  }
+
+  /// Forgets the current Vault (release grant + clear prefs). Files are kept.
+  Future<void> disconnect() async {
+    final uri = _config?.treeUri;
+    if (uri != null) await _gateway.releasePermission(uri);
+    await _prefs.clear();
+    _config = null;
+    _rootUri = null;
+    _documentsUri = null;
+  }
+
+  /// Ensures the folder skeleton + version.json exist, and caches dir URIs.
+  Future<void> _bind(VaultConfig config) async {
+    _config = config;
+    _rootUri = config.treeUri;
+    // Create top-level dirs (idempotent).
+    for (final dir in VaultLayout.topLevelDirs) {
+      final uri = await _gateway.ensureDir(config.treeUri, [dir]);
+      if (dir == VaultLayout.documentsDir) _documentsUri = uri;
+    }
+    await _ensureVersionFile();
+  }
+
+  Future<void> _ensureVersionFile() async {
+    final root = _requireRoot();
+    final existing = await _gateway.readString(root, VaultLayout.versionFile);
+    if (existing != null && tryDecodeObject(existing) != null) return;
+    final payload = encodePretty({
+      'schemaVersion': kVaultSchemaVersion,
+      'appVersion': _appVersion,
+    });
+    await _gateway.writeStringAtomic(root, VaultLayout.versionFile, payload);
+  }
+
+  // ── Index (thin, rebuildable cache) ──────────────────────────────────────
+
+  /// Loads the home-screen index. If index.json is missing or corrupt, it is
+  /// rebuilt from each document's meta.json (PLAN.md §3).
+  Future<List<IndexEntry>> loadIndex() async {
+    final root = _requireRoot();
+    final raw = await _gateway.readString(root, VaultLayout.indexFile);
+    if (raw != null) {
+      final parsed = tryDecodeObject(raw);
+      final items = parsed?['documents'];
+      if (items is List) {
+        return items
+            .whereType<Map<String, dynamic>>()
+            .map(IndexEntry.fromJson)
+            .toList();
+      }
+    }
+    // Missing/corrupt → rebuild.
+    return rebuildIndex();
+  }
+
+  /// Rescans `documents/` and rebuilds index.json from every meta.json. This is
+  /// the recovery path when the index is lost or the user edited the folder in
+  /// a file manager.
+  Future<List<IndexEntry>> rebuildIndex() async {
+    final docsUri = await _requireDocumentsUri();
+    final children = await _gateway.list(docsUri);
+    final entries = <IndexEntry>[];
+    for (final dir in children) {
+      if (!dir.isDir) continue;
+      final metaRaw = await _gateway.readString(dir.uri, VaultLayout.metaFile);
+      if (metaRaw == null) continue;
+      final json = tryDecodeObject(metaRaw);
+      if (json == null) continue;
+      entries.add(IndexEntry.fromDocument(Document.fromJson(json)));
+    }
+    entries.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    await _writeIndex(entries);
+    return entries;
+  }
+
+  Future<void> _writeIndex(List<IndexEntry> entries) async {
+    final root = _requireRoot();
+    final payload = encodePretty({
+      'schemaVersion': kIndexSchemaVersion,
+      'documents': entries.map((e) => e.toJson()).toList(),
+    });
+    await _gateway.writeStringAtomic(root, VaultLayout.indexFile, payload);
+  }
+
+  // ── Documents ────────────────────────────────────────────────────────────
+
+  /// Creates an empty document (folder + meta.json) and updates the index.
+  Future<Document> createDocument(String name, {DateTime? now}) async {
+    final docsUri = await _requireDocumentsUri();
+    final id = _uuid.v4();
+    final ts = now ?? DateTime.now();
+    final doc = Document(
+      id: id,
+      name: name.trim().isEmpty ? 'Untitled' : name.trim(),
+      createdAt: ts,
+      updatedAt: ts,
+      appVersion: _appVersion,
+    );
+    // Create the document folder + its subfolders up front.
+    final docDir = await _gateway.ensureDir(docsUri, [id]);
+    await _gateway.ensureDir(docDir, [VaultLayout.originalDir]);
+    await _gateway.ensureDir(docDir, [VaultLayout.processedDir]);
+    await _gateway.ensureDir(docDir, [VaultLayout.thumbsDir]);
+    await _writeMeta(docDir, doc);
+    await _upsertIndexEntry(IndexEntry.fromDocument(doc));
+    return doc;
+  }
+
+  /// Reads a document's authoritative meta.json.
+  Future<Document?> readDocument(String id) async {
+    final docsUri = await _requireDocumentsUri();
+    final docDir = await _gateway.child(docsUri, [id]);
+    if (docDir == null) return null;
+    final raw = await _gateway.readString(docDir.uri, VaultLayout.metaFile);
+    if (raw == null) return null;
+    final json = tryDecodeObject(raw);
+    return json == null ? null : Document.fromJson(json);
+  }
+
+  /// Persists a document (atomic meta.json) and refreshes its index row.
+  Future<Document> saveDocument(Document doc, {DateTime? now}) async {
+    final docsUri = await _requireDocumentsUri();
+    final updated = doc.copyWith(updatedAt: now ?? DateTime.now());
+    final docDir = await _gateway.ensureDir(docsUri, [doc.id]);
+    await _writeMeta(docDir, updated);
+    await _upsertIndexEntry(IndexEntry.fromDocument(updated));
+    return updated;
+  }
+
+  /// Renames a document (display name only; the folder id never changes).
+  Future<Document?> renameDocument(String id, String newName) async {
+    final doc = await readDocument(id);
+    if (doc == null) return null;
+    return saveDocument(doc.copyWith(name: newName));
+  }
+
+  /// Deletes a document folder and removes it from the index.
+  Future<void> deleteDocument(String id) async {
+    final docsUri = await _requireDocumentsUri();
+    final docDir = await _gateway.child(docsUri, [id]);
+    if (docDir != null) {
+      await _gateway.deleteByUri(docDir.uri, isDir: true);
+    }
+    final entries = await loadIndex();
+    entries.removeWhere((e) => e.id == id);
+    await _writeIndex(entries);
+  }
+
+  Future<void> _writeMeta(String docDirUri, Document doc) async {
+    await _gateway.writeStringAtomic(
+      docDirUri,
+      VaultLayout.metaFile,
+      encodePretty(doc.toJson()),
+    );
+  }
+
+  /// Inserts or replaces one index row, keeping the list sorted by recency.
+  Future<void> _upsertIndexEntry(IndexEntry entry) async {
+    final entries = await loadIndex();
+    entries.removeWhere((e) => e.id == entry.id);
+    entries.add(entry);
+    entries.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    await _writeIndex(entries);
+  }
+
+  // ── Internals ────────────────────────────────────────────────────────────
+
+  String _requireRoot() {
+    final root = _rootUri;
+    if (root == null) {
+      throw const VaultFailure(FailureKind.unknown, 'Vault is not connected.');
+    }
+    return root;
+  }
+
+  Future<String> _requireDocumentsUri() async {
+    final cached = _documentsUri;
+    if (cached != null) return cached;
+    final uri = await _gateway.ensureDir(_requireRoot(), [
+      VaultLayout.documentsDir,
+    ]);
+    _documentsUri = uri;
+    return uri;
+  }
+}
