@@ -162,17 +162,18 @@ class SafGateway {
     String mime = 'application/octet-stream',
   }) async {
     final tmpName = '$fileName${VaultLayout.tempSuffix}';
-    SafNewFile tmp;
+    final String tmpUri;
     try {
-      tmp = await _stream.writeFileBytes(dirUri, tmpName, mime, data,
+      final tmp = await _stream.writeFileBytes(dirUri, tmpName, mime, data,
           overwrite: true);
+      tmpUri = tmp.uri.toString();
     } catch (e) {
       throw VaultFailure(FailureKind.io, 'Temp write failed: $fileName',
           cause: e);
     }
     try {
       await deleteChild(dirUri, fileName);
-      await _util.rename(tmp.uri, false, fileName);
+      await _util.rename(tmpUri, false, fileName);
     } catch (e) {
       // Leave the .tmp behind for post-mortem; the old target is untouched.
       throw VaultFailure(FailureKind.io, 'Atomic rename failed: $fileName',

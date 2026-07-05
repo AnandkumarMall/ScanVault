@@ -6,7 +6,7 @@
 build/
 .pub-cache/
 .pub/
-pubspec.lock            # app: usually committed, but this is a template scaffold; enable if you want lockfile
+# pubspec.lock is committed on purpose — this is an app, so builds stay reproducible.
 **/generated_plugin_registrant.dart
 
 # FVM
