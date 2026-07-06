@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/constants.dart';
 import '../../app/providers.dart';
+import '../../domain/models/edit_params.dart';
 import '../../domain/models/index_entry.dart';
 import '../capture/camera_screen.dart';
 import '../capture/import_source.dart';
+import '../crop/crop_review_screen.dart';
 
 /// The document library — a grid of document cards (PLAN.md §Document
 /// Management). In Phase 1 the grid is empty and the FAB creates a blank
@@ -103,21 +105,61 @@ class HomeScreen extends ConsumerWidget {
     }
     if (images.isEmpty || !context.mounted) return;
 
+    // Detect & crop each page (Phase 3) before naming/saving.
+    final edits = await Navigator.of(context).push<List<EditParams>>(
+      MaterialPageRoute(
+        builder: (_) => CropReviewScreen(
+          images: images,
+          processor: ref.read(cvProcessorProvider),
+        ),
+        fullscreenDialog: true,
+      ),
+    );
+    if (edits == null || !context.mounted) return;
+
     final name = await _promptName(context, defaultScanName(DateTime.now()));
     if (name == null || !context.mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
+    _showProcessing(context);
     try {
       await ref
           .read(documentIndexProvider.notifier)
-          .createDocumentWithImages(name, images);
+          .createScannedDocument(name, images, edits);
+      if (context.mounted) Navigator.of(context).pop(); // dismiss progress
       messenger.showSnackBar(SnackBar(
         content: Text('Saved "$name" · ${images.length} '
             'page${images.length == 1 ? '' : 's'}'),
       ));
     } catch (e) {
+      if (context.mounted) Navigator.of(context).pop();
       messenger.showSnackBar(SnackBar(content: Text('Could not save: $e')));
     }
+  }
+
+  /// A blocking, non-dismissible progress dialog shown while pages are warped
+  /// and encoded (full-resolution OpenCV work can take a moment per page).
+  void _showProcessing(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+              SizedBox(width: 20),
+              Text('Processing pages…'),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<String?> _promptName(BuildContext context, String initial) async {

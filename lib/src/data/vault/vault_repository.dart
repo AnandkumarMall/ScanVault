@@ -6,11 +6,30 @@ import '../../core/failure.dart';
 import '../../core/json_utils.dart';
 import '../../domain/models/doc_page.dart';
 import '../../domain/models/document.dart';
+import '../../domain/models/edit_params.dart';
 import '../../domain/models/index_entry.dart';
 import '../../domain/models/vault_config.dart';
 import 'saf_gateway.dart';
 import 'vault_layout.dart';
 import 'vault_prefs.dart';
+
+/// The persistable bytes for one processed page (Phase 3): the untouched capture,
+/// the warped/enhanced result, a thumbnail, and the crop [EditParams] that make
+/// the processed image regenerable. Kept free of any OpenCV dependency so the
+/// repository stays testable without native libraries.
+class ScannedPageData {
+  const ScannedPageData({
+    required this.original,
+    required this.processed,
+    required this.thumbnail,
+    required this.edit,
+  });
+
+  final Uint8List original;
+  final Uint8List processed;
+  final Uint8List thumbnail;
+  final EditParams edit;
+}
 
 /// High-level operations over the Vault. Coordinates the SAF [SafGateway], the
 /// prefs-stored URI ([VaultPrefs]), and the thin/rebuildable index (PLAN.md §3).
@@ -225,6 +244,51 @@ class VaultRepository {
   /// Appends a single captured/imported image as a new page.
   Future<Document> addPage(String docId, Uint8List image, {DateTime? now}) =>
       addPages(docId, [image], now: now);
+
+  /// Appends fully-processed pages (Phase 3): for each page writes the untouched
+  /// `original/`, the warped/enhanced `processed/`, and a cached `thumbs/` image,
+  /// and records the crop [EditParams] so the processed image stays regenerable
+  /// (PLAN.md §3 non-destructive + cache-processed). meta.json + the index row
+  /// are persisted once at the end.
+  Future<Document> addScannedPages(
+    String docId,
+    List<ScannedPageData> pages, {
+    DateTime? now,
+  }) async {
+    if (pages.isEmpty) return _requireDocument(docId);
+    final doc = await _requireDocument(docId);
+    final docsUri = await _requireDocumentsUri();
+    final docDir = await _gateway.ensureDir(docsUri, [docId]);
+    final originalUri =
+        await _gateway.ensureDir(docDir, [VaultLayout.originalDir]);
+    final processedUri =
+        await _gateway.ensureDir(docDir, [VaultLayout.processedDir]);
+    final thumbsUri =
+        await _gateway.ensureDir(docDir, [VaultLayout.thumbsDir]);
+
+    final newPages = <DocPage>[];
+    for (final page in pages) {
+      final pageId = _uuid.v4();
+      final fileName = '$pageId.jpg';
+      await _gateway.writeBytes(originalUri, fileName, page.original,
+          mime: 'image/jpeg');
+      await _gateway.writeBytes(processedUri, fileName, page.processed,
+          mime: 'image/jpeg');
+      await _gateway.writeBytes(thumbsUri, fileName, page.thumbnail,
+          mime: 'image/jpeg');
+      newPages.add(DocPage(
+        id: pageId,
+        originalPath: '${VaultLayout.originalDir}/$fileName',
+        processedPath: '${VaultLayout.processedDir}/$fileName',
+        thumbPath: '${VaultLayout.thumbsDir}/$fileName',
+        edit: page.edit,
+      ));
+    }
+    return saveDocument(
+      doc.copyWith(pages: [...doc.pages, ...newPages]),
+      now: now,
+    );
+  }
 
   /// Reads the raw bytes of one of a document's files by its document-relative
   /// path (e.g. `original/<id>.jpg`). Null if the document or file is gone.

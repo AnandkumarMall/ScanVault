@@ -2,9 +2,11 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/cv/cv_processor.dart';
 import '../data/vault/saf_gateway.dart';
 import '../data/vault/vault_prefs.dart';
 import '../data/vault/vault_repository.dart';
+import '../domain/models/edit_params.dart';
 import '../domain/models/index_entry.dart';
 import '../domain/models/vault_config.dart';
 import 'constants.dart';
@@ -15,6 +17,9 @@ final vaultPrefsProvider = Provider<VaultPrefs>(
 );
 
 final safGatewayProvider = Provider<SafGateway>((ref) => SafGateway());
+
+/// The OpenCV document pipeline (detect / warp / thumbnail), Phase 3.
+final cvProcessorProvider = Provider<CvProcessor>((ref) => const CvProcessor());
 
 final vaultRepositoryProvider = Provider<VaultRepository>(
   (ref) => VaultRepository(
@@ -100,6 +105,34 @@ class DocumentIndexController extends AsyncNotifier<List<IndexEntry>> {
     final repo = ref.read(vaultRepositoryProvider);
     final doc = await repo.createDocument(name);
     if (images.isNotEmpty) await repo.addPages(doc.id, images);
+    ref.invalidateSelf();
+    await future;
+    return doc.id;
+  }
+
+  /// Creates a document from captured [originals] and their per-page crop
+  /// [edits] (Phase 3): each page is warped + thumbnailed via OpenCV, then the
+  /// original + processed + thumb are persisted. Returns the new document id.
+  Future<String> createScannedDocument(
+    String name,
+    List<Uint8List> originals,
+    List<EditParams> edits,
+  ) async {
+    assert(originals.length == edits.length);
+    final repo = ref.read(vaultRepositoryProvider);
+    final processor = ref.read(cvProcessorProvider);
+    final pages = <ScannedPageData>[];
+    for (var i = 0; i < originals.length; i++) {
+      final built = await processor.buildPage(originals[i], edits[i]);
+      pages.add(ScannedPageData(
+        original: built.original,
+        processed: built.processed,
+        thumbnail: built.thumbnail,
+        edit: built.edit,
+      ));
+    }
+    final doc = await repo.createDocument(name);
+    if (pages.isNotEmpty) await repo.addScannedPages(doc.id, pages);
     ref.invalidateSelf();
     await future;
     return doc.id;
