@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/vault/saf_gateway.dart';
@@ -89,6 +91,20 @@ class DocumentIndexController extends AsyncNotifier<List<IndexEntry>> {
     return doc.id;
   }
 
+  /// Creates a document and populates it with captured/imported [images] in one
+  /// go, then refreshes the index. Returns the new document id (PLAN.md §2).
+  Future<String> createDocumentWithImages(
+    String name,
+    List<Uint8List> images,
+  ) async {
+    final repo = ref.read(vaultRepositoryProvider);
+    final doc = await repo.createDocument(name);
+    if (images.isNotEmpty) await repo.addPages(doc.id, images);
+    ref.invalidateSelf();
+    await future;
+    return doc.id;
+  }
+
   Future<void> deleteDocument(String id) async {
     final repo = ref.read(vaultRepositoryProvider);
     await repo.deleteDocument(id);
@@ -103,3 +119,15 @@ class DocumentIndexController extends AsyncNotifier<List<IndexEntry>> {
     await future;
   }
 }
+
+/// Identifies one cover image to load. The [version] (the doc's updatedAt in ms)
+/// is part of the key so the cached bytes invalidate when the document changes.
+typedef DocFileRef = ({String docId, String path, int version});
+
+/// Loads the raw bytes of a document file (e.g. a cover image) from the Vault.
+/// autoDispose so scrolled-off grid thumbnails release their memory.
+final docFileBytesProvider =
+    FutureProvider.autoDispose.family<Uint8List?, DocFileRef>((ref, key) {
+  final repo = ref.watch(vaultRepositoryProvider);
+  return repo.readDocumentFile(key.docId, key.path);
+});

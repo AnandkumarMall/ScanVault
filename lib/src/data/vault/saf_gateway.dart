@@ -110,6 +110,16 @@ class SafGateway {
     }
   }
 
+  /// Reads the raw bytes of a document at [fileUri] directly (already resolved
+  /// via [child]). Used for nested paths like `original/<id>.jpg`.
+  Future<Uint8List?> readFileByUri(String fileUri) async {
+    try {
+      return await _stream.readFileBytes(fileUri);
+    } catch (e) {
+      throw VaultFailure(FailureKind.io, 'Read failed', cause: e);
+    }
+  }
+
   /// Reads the raw bytes of [fileName] inside [dirUri], or null if it's absent.
   Future<Uint8List?> readBytes(String dirUri, String fileName) async {
     final file = await child(dirUri, [fileName]);

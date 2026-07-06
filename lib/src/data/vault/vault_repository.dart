@@ -1,7 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:uuid/uuid.dart';
 
 import '../../core/failure.dart';
 import '../../core/json_utils.dart';
+import '../../domain/models/doc_page.dart';
 import '../../domain/models/document.dart';
 import '../../domain/models/index_entry.dart';
 import '../../domain/models/vault_config.dart';
@@ -185,6 +188,63 @@ class VaultRepository {
     if (raw == null) return null;
     final json = tryDecodeObject(raw);
     return json == null ? null : Document.fromJson(json);
+  }
+
+  /// Appends captured/imported [images] (JPEG bytes) as new pages of document
+  /// [docId]: each is written as an `original/<pageId>.jpg` source, then the
+  /// document's meta.json + index row are persisted once (PLAN.md §2). Page
+  /// files are named by UUID so deletes/reorders (Phase 5) never collide.
+  Future<Document> addPages(
+    String docId,
+    List<Uint8List> images, {
+    DateTime? now,
+  }) async {
+    if (images.isEmpty) return _requireDocument(docId);
+    final doc = await _requireDocument(docId);
+    final docsUri = await _requireDocumentsUri();
+    final docDir = await _gateway.ensureDir(docsUri, [docId]);
+    final originalUri =
+        await _gateway.ensureDir(docDir, [VaultLayout.originalDir]);
+
+    final newPages = <DocPage>[];
+    for (final bytes in images) {
+      final pageId = _uuid.v4();
+      final fileName = '$pageId.jpg';
+      await _gateway.writeBytes(originalUri, fileName, bytes, mime: 'image/jpeg');
+      newPages.add(DocPage(
+        id: pageId,
+        originalPath: '${VaultLayout.originalDir}/$fileName',
+      ));
+    }
+    return saveDocument(
+      doc.copyWith(pages: [...doc.pages, ...newPages]),
+      now: now,
+    );
+  }
+
+  /// Appends a single captured/imported image as a new page.
+  Future<Document> addPage(String docId, Uint8List image, {DateTime? now}) =>
+      addPages(docId, [image], now: now);
+
+  /// Reads the raw bytes of one of a document's files by its document-relative
+  /// path (e.g. `original/<id>.jpg`). Null if the document or file is gone.
+  Future<Uint8List?> readDocumentFile(String docId, String relativePath) async {
+    final docsUri = await _requireDocumentsUri();
+    final docDir = await _gateway.child(docsUri, [docId]);
+    if (docDir == null) return null;
+    final segments = relativePath.split('/').where((s) => s.isNotEmpty).toList();
+    if (segments.isEmpty) return null;
+    final file = await _gateway.child(docDir.uri, segments);
+    if (file == null) return null;
+    return _gateway.readFileByUri(file.uri);
+  }
+
+  Future<Document> _requireDocument(String id) async {
+    final doc = await readDocument(id);
+    if (doc == null) {
+      throw VaultFailure(FailureKind.unknown, 'Document not found: $id');
+    }
+    return doc;
   }
 
   /// Persists a document (atomic meta.json) and refreshes its index row.

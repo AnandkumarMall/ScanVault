@@ -18,6 +18,9 @@ dependencies:
   # Camera capture + live preview (Phase 2)
   camera: ^0.11.0
 
+  # Gallery import via the Android photo picker (Phase 2)
+  image_picker: ^1.1.2
+
   # OpenCV: detect / warp / filters — trimmed to imgproc+imgcodecs (Phase 3+, see §7)
   dartcv4: ^1.1.1
 
