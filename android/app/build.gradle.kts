@@ -6,7 +6,9 @@ plugins {
 
 android {
     namespace = "com.scanvault.app"
-    compileSdk = 35
+    // compileSdk 36: required by current plugins (camera_android_camerax, saf_*,
+    // flutter_plugin_android_lifecycle). targetSdk stays 35 per PLAN.md §11.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
