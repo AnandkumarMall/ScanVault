@@ -21,7 +21,12 @@ dependencies:
   # Gallery import via the Android photo picker (Phase 2)
   image_picker: ^1.1.2
 
-  # OpenCV: detect / warp / filters — trimmed to imgproc+imgcodecs (Phase 3+, see §7)
+  # OpenCV: detect / warp / filters — trimmed to imgproc+imgcodecs (Phase 3+, see §7).
+  # `opencv_dart` is the Flutter wrapper carrying the native-assets build hook that
+  # bundles libdartcv.so into the APK; `dartcv4` is the pure-Dart bindings we import
+  # (`package:dartcv4/dartcv.dart`). BOTH are required, and native assets must be
+  # enabled once per machine: `flutter config --enable-native-assets`.
+  opencv_dart: ^1.1.1
   dartcv4: ^1.1.1
 
   # Pure-Dart image encode/rotate fallbacks
