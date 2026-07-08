@@ -44,12 +44,11 @@ dependencies:
   printing: ^5.13.4
 
   # PDF -> images import (PDFium, offline) (Phase 6)
-  # DEFERRED to Phase 6: pdfrx's Android CMake build creates a symlink, which
-  # Windows blocks unless Developer Mode is enabled. Re-add when we reach Phase 6.
-  # pdfrx: ^1.0.90
+  pdfrx: ^1.3.5
 
   # Android share sheet (Phase 6)
-  share_plus: ^13.2.0
+  share_plus: ^10.1.0
+  file_picker: ^11.0.2
 
   # UUID document ids + filesystem paths
   uuid: ^4.5.1
@@ -58,6 +57,7 @@ dependencies:
 
   # Small immutable-value / equality helpers
   collection: ^1.19.0
+  reorderable_grid_view: ^2.2.8
 
 dev_dependencies:
   flutter_test:

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/cv/cv_processor.dart';
+import '../data/pdf/pdf_export_service.dart';
 import '../data/vault/saf_gateway.dart';
 import '../data/vault/vault_prefs.dart';
 import '../data/vault/vault_repository.dart';
@@ -20,6 +21,8 @@ final safGatewayProvider = Provider<SafGateway>((ref) => SafGateway());
 
 /// The OpenCV document pipeline (detect / warp / thumbnail), Phase 3.
 final cvProcessorProvider = Provider<CvProcessor>((ref) => const CvProcessor());
+
+final pdfExportServiceProvider = Provider<PdfExportService>((ref) => const PdfExportService());
 
 final vaultRepositoryProvider = Provider<VaultRepository>(
   (ref) => VaultRepository(

@@ -221,6 +221,66 @@ class VaultRepository {
   Future<Document> addPage(String docId, Uint8List image, {DateTime? now}) =>
       addPages(docId, [image], now: now);
 
+  /// Merges multiple documents into a new single document.
+  Future<Document> mergeDocuments(String newName, List<String> docIds) async {
+    if (docIds.length < 2) {
+      throw const VaultFailure(FailureKind.unknown, 'Need at least 2 documents to merge.');
+    }
+
+    // 1. Create a brand new document
+    final newDoc = await createDocument(newName);
+    final docsUri = await _requireDocumentsUri();
+    final newDocDir = await _gateway.ensureDir(docsUri, [newDoc.id]);
+    final originalUri = await _gateway.ensureDir(newDocDir, [VaultLayout.originalDir]);
+    final processedUri = await _gateway.ensureDir(newDocDir, [VaultLayout.processedDir]);
+    final thumbsUri = await _gateway.ensureDir(newDocDir, [VaultLayout.thumbsDir]);
+
+    final newPages = <DocPage>[];
+
+    // 2. Copy all pages from old documents to the new document
+    for (final docId in docIds) {
+      final oldDoc = await readDocument(docId);
+      if (oldDoc == null) continue;
+
+      for (final oldPage in oldDoc.pages) {
+        final originalBytes = await readDocumentFile(docId, oldPage.originalPath);
+        final processedBytes = oldPage.processedPath != null ? await readDocumentFile(docId, oldPage.processedPath!) : null;
+        final thumbBytes = oldPage.thumbPath != null ? await readDocumentFile(docId, oldPage.thumbPath!) : null;
+
+        if (originalBytes == null) continue;
+
+        final pageId = _uuid.v4();
+        final fileName = '$pageId.jpg';
+
+        await _gateway.writeBytes(originalUri, fileName, originalBytes, mime: 'image/jpeg');
+        if (processedBytes != null) {
+          await _gateway.writeBytes(processedUri, fileName, processedBytes, mime: 'image/jpeg');
+        }
+        if (thumbBytes != null) {
+          await _gateway.writeBytes(thumbsUri, fileName, thumbBytes, mime: 'image/jpeg');
+        }
+
+        newPages.add(DocPage(
+          id: pageId,
+          originalPath: '${VaultLayout.originalDir}/$fileName',
+          processedPath: processedBytes != null ? '${VaultLayout.processedDir}/$fileName' : null,
+          thumbPath: thumbBytes != null ? '${VaultLayout.thumbsDir}/$fileName' : null,
+          edit: oldPage.edit,
+        ));
+      }
+    }
+
+    // 3. Save the new document
+    final finalDoc = await saveDocument(newDoc.copyWith(pages: newPages));
+
+    // 4. Delete the old documents
+    for (final docId in docIds) {
+      await deleteDocument(docId);
+    }
+
+    return finalDoc;
+  }
+
   Future<Document> addScannedPages(
     String docId,
     List<ScannedPageData> pages, {
@@ -309,6 +369,256 @@ class VaultRepository {
     final entries = await loadIndex();
     entries.removeWhere((e) => e.id == id);
     await _writeIndex(entries);
+  }
+
+  // ── Page-level mutations (Phase 5) ────────────────────────────────────────
+
+  /// Replaces a single page (retake): writes new original/processed/thumb files,
+  /// updates the DocPage in the pages list, and persists the document.
+  ///
+  /// If [processor] is provided, it will be used to generate the processed image
+  /// and thumbnail from [newOriginal] and [newEdit]. Otherwise, the caller must
+  /// provide [newProcessed] and [newThumb] directly.
+  Future<Document> replacePage(
+    String docId,
+    int pageIndex,
+    Uint8List newOriginal,
+    EditParams newEdit, {
+    DateTime? now,
+    Uint8List? newProcessed,
+    Uint8List? newThumb,
+    Future<(Uint8List processed, Uint8List thumb)> Function(
+          Uint8List original,
+          EditParams edit,
+        )? processor,
+  }) async {
+    final doc = await _requireDocument(docId);
+    if (pageIndex < 0 || pageIndex >= doc.pages.length) {
+      throw VaultFailure(FailureKind.unknown, 'Page index out of bounds: $pageIndex');
+    }
+
+    final docsUri = await _requireDocumentsUri();
+    final docDir = await _gateway.ensureDir(docsUri, [docId]);
+    final originalUri = await _gateway.ensureDir(docDir, [VaultLayout.originalDir]);
+    final processedUri = await _gateway.ensureDir(docDir, [VaultLayout.processedDir]);
+    final thumbsUri = await _gateway.ensureDir(docDir, [VaultLayout.thumbsDir]);
+
+    final oldPage = doc.pages[pageIndex];
+    final pageId = _uuid.v4();
+    final fileName = '$pageId.jpg';
+
+    // Write new original
+    await _gateway.writeBytes(originalUri, fileName, newOriginal, mime: 'image/jpeg');
+
+    Uint8List processedBytes;
+    Uint8List thumbBytes;
+
+    if (processor != null) {
+      final result = await processor(newOriginal, newEdit);
+      processedBytes = result.$1;
+      thumbBytes = result.$2;
+    } else {
+      if (newProcessed == null || newThumb == null) {
+        throw VaultFailure(
+          FailureKind.unknown,
+          'Either processor or (newProcessed + newThumb) must be provided',
+        );
+      }
+      processedBytes = newProcessed;
+      thumbBytes = newThumb;
+    }
+
+    // Write new processed and thumbnail
+    await _gateway.writeBytes(processedUri, fileName, processedBytes, mime: 'image/jpeg');
+    await _gateway.writeBytes(thumbsUri, fileName, thumbBytes, mime: 'image/jpeg');
+
+    // Delete old files (best-effort; ignore if missing)
+    await _deletePageFiles(docDir, oldPage);
+
+    // Create new DocPage with updated paths and edit
+    final newPage = DocPage(
+      id: pageId,
+      originalPath: '${VaultLayout.originalDir}/$fileName',
+      processedPath: '${VaultLayout.processedDir}/$fileName',
+      thumbPath: '${VaultLayout.thumbsDir}/$fileName',
+      edit: newEdit,
+    );
+
+    final newPages = List<DocPage>.from(doc.pages);
+    newPages[pageIndex] = newPage;
+
+    return saveDocument(doc.copyWith(pages: newPages), now: now);
+  }
+
+  /// Reorders pages within a document.
+  Future<Document> reorderPages(
+    String docId,
+    int oldIndex,
+    int newIndex, {
+    DateTime? now,
+  }) async {
+    final doc = await _requireDocument(docId);
+    if (oldIndex < 0 || oldIndex >= doc.pages.length) {
+      throw VaultFailure(FailureKind.unknown, 'Old index out of bounds: $oldIndex');
+    }
+    if (newIndex < 0 || newIndex >= doc.pages.length) {
+      throw VaultFailure(FailureKind.unknown, 'New index out of bounds: $newIndex');
+    }
+    if (oldIndex == newIndex) return doc;
+
+    final newPages = List<DocPage>.from(doc.pages);
+    final page = newPages.removeAt(oldIndex);
+    newPages.insert(newIndex, page);
+
+    return saveDocument(doc.copyWith(pages: newPages), now: now);
+  }
+
+  /// Deletes specific pages by index.
+  ///
+  /// Removes the DocPage entries and deletes associated files from SAF.
+  /// Indices are evaluated against the current page list (0-based).
+  /// For safe deletion of multiple pages, provide indices in descending order
+  /// or the method will sort them descending internally.
+  Future<Document> deletePages(
+    String docId,
+    List<int> pageIndices, {
+    DateTime? now,
+  }) async {
+    final doc = await _requireDocument(docId);
+    if (pageIndices.isEmpty) return doc;
+
+    // Validate and deduplicate indices
+    final uniqueIndices = pageIndices.toSet().toList()
+      ..sort((a, b) => b.compareTo(a)); // Descending for stable removal
+
+    for (final idx in uniqueIndices) {
+      if (idx < 0 || idx >= doc.pages.length) {
+        throw VaultFailure(FailureKind.unknown, 'Page index out of bounds: $idx');
+      }
+    }
+
+    final docsUri = await _requireDocumentsUri();
+    final docDir = await _gateway.child(docsUri, [docId]);
+    if (docDir == null) {
+      throw VaultFailure(FailureKind.unknown, 'Document folder not found: $docId');
+    }
+
+    // Delete files for each page being removed
+    for (final idx in uniqueIndices) {
+      await _deletePageFiles(docDir.uri, doc.pages[idx]);
+    }
+
+    // Remove pages from list
+    final newPages = List<DocPage>.from(doc.pages);
+    for (final idx in uniqueIndices) {
+      newPages.removeAt(idx);
+    }
+
+    return saveDocument(doc.copyWith(pages: newPages), now: now);
+  }
+
+  /// Updates a page's edit params (after re-crop/enhance).
+  ///
+  /// Regenerates processed/thumb from the original image + new [edit],
+  /// updates the DocPage, and persists the document.
+  ///
+  /// If [processor] is not provided, the caller must supply [newProcessed]
+  /// and [newThumb] directly.
+  Future<Document> updatePageEdit(
+    String docId,
+    int pageIndex,
+    EditParams edit, {
+    DateTime? now,
+    Uint8List? newProcessed,
+    Uint8List? newThumb,
+    Future<(Uint8List processed, Uint8List thumb)> Function(
+          Uint8List original,
+          EditParams edit,
+        )? processor,
+  }) async {
+    final doc = await _requireDocument(docId);
+    if (pageIndex < 0 || pageIndex >= doc.pages.length) {
+      throw VaultFailure(FailureKind.unknown, 'Page index out of bounds: $pageIndex');
+    }
+
+    final page = doc.pages[pageIndex];
+    final originalBytes = await readDocumentFile(docId, page.originalPath);
+    if (originalBytes == null) {
+      throw VaultFailure(FailureKind.unknown, 'Original image not found for page ${page.id}');
+    }
+
+    final docsUri = await _requireDocumentsUri();
+    final docDir = await _gateway.ensureDir(docsUri, [docId]);
+    final processedUri = await _gateway.ensureDir(docDir, [VaultLayout.processedDir]);
+    final thumbsUri = await _gateway.ensureDir(docDir, [VaultLayout.thumbsDir]);
+
+    Uint8List processedBytes;
+    Uint8List thumbBytes;
+
+    if (processor != null) {
+      final result = await processor(originalBytes, edit);
+      processedBytes = result.$1;
+      thumbBytes = result.$2;
+    } else {
+      if (newProcessed == null || newThumb == null) {
+        throw VaultFailure(
+          FailureKind.unknown,
+          'Either processor or (newProcessed + newThumb) must be provided',
+        );
+      }
+      processedBytes = newProcessed;
+      thumbBytes = newThumb;
+    }
+
+    // Write new processed and thumbnail (same filename, overwrite)
+    final processedSegments = page.processedPath!.split('/');
+    final processedFileName = processedSegments.last;
+    final thumbSegments = page.thumbPath!.split('/');
+    final thumbFileName = thumbSegments.last;
+
+    await _gateway.writeBytes(processedUri, processedFileName, processedBytes, mime: 'image/jpeg');
+    await _gateway.writeBytes(thumbsUri, thumbFileName, thumbBytes, mime: 'image/jpeg');
+
+    // Update DocPage with new edit params (paths stay the same)
+    final updatedPage = page.copyWith(edit: edit);
+    final newPages = List<DocPage>.from(doc.pages);
+    newPages[pageIndex] = updatedPage;
+
+    return saveDocument(doc.copyWith(pages: newPages), now: now);
+  }
+
+  /// Helper to delete a page's associated files from SAF.
+  Future<void> _deletePageFiles(String docDirUri, DocPage page) async {
+    // Delete original
+    if (page.originalPath.isNotEmpty) {
+      final segments = page.originalPath.split('/').where((s) => s.isNotEmpty).toList();
+      if (segments.isNotEmpty) {
+        final file = await _gateway.child(docDirUri, segments);
+        if (file != null) {
+          await _gateway.deleteByUri(file.uri, isDir: false);
+        }
+      }
+    }
+    // Delete processed
+    if (page.processedPath != null && page.processedPath!.isNotEmpty) {
+      final segments = page.processedPath!.split('/').where((s) => s.isNotEmpty).toList();
+      if (segments.isNotEmpty) {
+        final file = await _gateway.child(docDirUri, segments);
+        if (file != null) {
+          await _gateway.deleteByUri(file.uri, isDir: false);
+        }
+      }
+    }
+    // Delete thumbnail
+    if (page.thumbPath != null && page.thumbPath!.isNotEmpty) {
+      final segments = page.thumbPath!.split('/').where((s) => s.isNotEmpty).toList();
+      if (segments.isNotEmpty) {
+        final file = await _gateway.child(docDirUri, segments);
+        if (file != null) {
+          await _gateway.deleteByUri(file.uri, isDir: false);
+        }
+      }
+    }
   }
 
   Future<void> _writeMeta(String docDirUri, Document doc) async {

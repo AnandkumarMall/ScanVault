@@ -12,6 +12,8 @@ class Document {
     required this.createdAt,
     required this.updatedAt,
     this.pages = const [],
+    this.tags = const [],
+    this.isDeleted = false,
     this.schemaVersion = kDocumentSchemaVersion,
     this.appVersion = '',
   });
@@ -23,17 +25,21 @@ class Document {
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<DocPage> pages;
+  final List<String> tags;
+  final bool isDeleted;
   final int schemaVersion;
   final String appVersion;
 
   int get pageCount => pages.length;
 
-  String? get coverPath => pages.isEmpty ? null : pages.first.displayPath;
+  String? get coverPath => pages.isEmpty ? null : (pages.first.thumbPath ?? pages.first.displayPath);
 
   Document copyWith({
     String? name,
     DateTime? updatedAt,
     List<DocPage>? pages,
+    List<String>? tags,
+    bool? isDeleted,
     String? appVersion,
   }) {
     return Document(
@@ -42,6 +48,8 @@ class Document {
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       pages: pages ?? this.pages,
+      tags: tags ?? this.tags,
+      isDeleted: isDeleted ?? this.isDeleted,
       schemaVersion: schemaVersion,
       appVersion: appVersion ?? this.appVersion,
     );
@@ -55,6 +63,8 @@ class Document {
         'updatedAt': updatedAt.toUtc().toIso8601String(),
         'appVersion': appVersion,
         'pages': pages.map((p) => p.toJson()).toList(),
+        'tags': tags,
+        'isDeleted': isDeleted,
       };
 
   factory Document.fromJson(Map<String, dynamic> json) {
@@ -66,6 +76,10 @@ class Document {
       updatedAt: _parseDate(jsonString(json, 'updatedAt')),
       schemaVersion: jsonInt(json, 'schemaVersion', or: kDocumentSchemaVersion),
       appVersion: jsonString(json, 'appVersion'),
+      isDeleted: json['isDeleted'] == true,
+      tags: json['tags'] is List 
+          ? (json['tags'] as List).map((e) => e.toString()).toList()
+          : const [],
       pages: rawPages is List
           ? rawPages
               .whereType<Map<String, dynamic>>()

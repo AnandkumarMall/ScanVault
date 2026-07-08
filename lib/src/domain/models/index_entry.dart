@@ -13,12 +13,16 @@ class IndexEntry {
     required this.updatedAt,
     required this.pageCount,
     this.coverPath,
+    this.tags = const [],
+    this.isDeleted = false,
   });
 
   final String id;
   final String name;
   final DateTime updatedAt;
   final int pageCount;
+  final List<String> tags;
+  final bool isDeleted;
 
   /// Relative path (within the document folder) of the cover thumbnail/image.
   final String? coverPath;
@@ -29,6 +33,8 @@ class IndexEntry {
         updatedAt: doc.updatedAt,
         pageCount: doc.pageCount,
         coverPath: doc.coverPath,
+        tags: doc.tags,
+        isDeleted: doc.isDeleted,
       );
 
   Map<String, dynamic> toJson() => {
@@ -36,6 +42,8 @@ class IndexEntry {
         'name': name,
         'date': updatedAt.toUtc().toIso8601String(),
         'pageCount': pageCount,
+        'tags': tags,
+        'isDeleted': isDeleted,
         if (coverPath != null) 'cover': coverPath,
       };
 
@@ -46,5 +54,9 @@ class IndexEntry {
             DateTime.fromMillisecondsSinceEpoch(0),
         pageCount: jsonInt(json, 'pageCount'),
         coverPath: json['cover'] is String ? json['cover'] as String : null,
+        isDeleted: json['isDeleted'] == true,
+        tags: json['tags'] is List 
+            ? (json['tags'] as List).map((e) => e.toString()).toList()
+            : const [],
       );
 }

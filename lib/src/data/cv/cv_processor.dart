@@ -12,11 +12,11 @@ import 'quad_geometry.dart';
 const int kDetectionMaxSide = 640;
 
 /// Longest side (px) for cached page thumbnails.
-const int kThumbnailMaxSide = 320;
+const int kThumbnailMaxSide = 256;
 
 /// JPEG quality for processed pages and thumbnails.
-const int kProcessedJpegQuality = 90;
-const int kThumbnailJpegQuality = 80;
+const int kProcessedJpegQuality = 75;
+const int kThumbnailJpegQuality = 60;
 
 /// A contour must cover at least this fraction of the (downscaled) frame to be
 /// considered the document — filters out text blocks, logos and noise.

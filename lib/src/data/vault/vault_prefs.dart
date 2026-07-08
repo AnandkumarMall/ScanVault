@@ -11,6 +11,7 @@ class VaultPrefs {
 
   static const String _kTreeUri = 'vault.treeUri';
   static const String _kDisplayName = 'vault.displayName';
+  static const String _kPin = 'vault.pin';
 
   static Future<VaultPrefs> load() async =>
       VaultPrefs(await SharedPreferences.getInstance());
@@ -36,5 +37,19 @@ class VaultPrefs {
   Future<void> clear() async {
     await _prefs.remove(_kTreeUri);
     await _prefs.remove(_kDisplayName);
+  }
+
+  Future<void> setPin(String pin) async {
+    await _prefs.setString(_kPin, pin);
+  }
+
+  String? getPin() {
+    return _prefs.getString(_kPin);
+  }
+
+  bool get hasPin => getPin() != null;
+
+  Future<void> removePin() async {
+    await _prefs.remove(_kPin);
   }
 }

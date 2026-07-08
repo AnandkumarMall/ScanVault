@@ -23,6 +23,8 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
   String? _error;
   bool _capturing = false;
   final List<Uint8List> _captured = [];
+  FlashMode _flashMode = FlashMode.auto;
+  bool _showGrid = false;
 
   @override
   void initState() {
@@ -130,10 +132,30 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: Text(_captured.isEmpty
-            ? 'Scan'
-            : '${_captured.length} page${_captured.length == 1 ? '' : 's'}'),
+        leading: IconButton(
+          icon: Icon(
+            _flashMode == FlashMode.auto ? Icons.flash_auto :
+            _flashMode == FlashMode.always ? Icons.flash_on : Icons.flash_off
+          ),
+          onPressed: () {
+            if (_controller == null) return;
+            setState(() {
+              if (_flashMode == FlashMode.auto) _flashMode = FlashMode.always;
+              else if (_flashMode == FlashMode.always) _flashMode = FlashMode.off;
+              else _flashMode = FlashMode.auto;
+            });
+            _controller!.setFlashMode(_flashMode);
+          },
+        ),
+        title: _captured.isEmpty
+            ? null
+            : Text('${_captured.length} page${_captured.length == 1 ? '' : 's'}'),
+        centerTitle: true,
         actions: [
+          IconButton(
+            icon: Icon(_showGrid ? Icons.grid_on : Icons.grid_off),
+            onPressed: () => setState(() => _showGrid = !_showGrid),
+          ),
           if (_captured.isNotEmpty)
             TextButton(
               onPressed: _finish,
@@ -182,7 +204,15 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
             !controller.value.isInitialized) {
           return const Center(child: CircularProgressIndicator());
         }
-        return Center(child: CameraPreview(controller));
+        return Center(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CameraPreview(controller),
+              if (_showGrid) const _GridOverlay(),
+            ],
+          ),
+        );
       },
     );
   }
@@ -196,12 +226,35 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             if (_captured.isNotEmpty) _buildStrip(),
+            const SizedBox(height: 16),
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
                 _ShutterButton(
                   busy: _capturing,
                   onTap: _capture,
+                ),
+                Column(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.image, color: Colors.white),
+                      onPressed: () => Navigator.of(context).pop('gallery'),
+                    ),
+                    const Text('Import', style: TextStyle(color: Colors.white, fontSize: 10)),
+                  ],
+                ),
+                Column(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.insert_drive_file, color: Colors.white),
+                      onPressed: () => Navigator.of(context).pop('pdf'),
+                    ),
+                    const Text('Import Files', style: TextStyle(color: Colors.white, fontSize: 10)),
+                  ],
                 ),
               ],
             ),
@@ -265,4 +318,34 @@ class _ShutterButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _GridOverlay extends StatelessWidget {
+  const _GridOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(painter: _GridPainter());
+  }
+}
+
+class _GridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white38
+      ..strokeWidth = 1.0;
+    
+    // Draw 3x3 grid
+    final dx = size.width / 3;
+    final dy = size.height / 3;
+    
+    canvas.drawLine(Offset(dx, 0), Offset(dx, size.height), paint);
+    canvas.drawLine(Offset(dx * 2, 0), Offset(dx * 2, size.height), paint);
+    canvas.drawLine(Offset(0, dy), Offset(size.width, dy), paint);
+    canvas.drawLine(Offset(0, dy * 2), Offset(size.width, dy * 2), paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

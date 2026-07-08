@@ -5,6 +5,7 @@ import '../core/failure.dart';
 import '../features/home/home_screen.dart';
 import '../features/onboarding/connect_screen.dart';
 import '../features/onboarding/reconnect_screen.dart';
+import '../features/auth/pin_screen.dart';
 import 'constants.dart';
 import 'providers.dart';
 import 'theme.dart';
@@ -42,8 +43,12 @@ class _RootGate extends ConsumerWidget {
         }
         return ReconnectScreen(message: '$err');
       },
-      data: (config) =>
-          config == null ? const ConnectScreen() : const HomeScreen(),
+      data: (config) {
+        if (config == null) return const ConnectScreen();
+        final prefs = ref.read(vaultPrefsProvider);
+        if (prefs.hasPin) return const PinScreen();
+        return const HomeScreen();
+      },
     );
   }
 }
