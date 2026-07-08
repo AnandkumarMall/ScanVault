@@ -101,13 +101,13 @@ class _PinScreenState extends ConsumerState<PinScreen> {
               children: List.generate(4, (index) {
                 return Container(
                   margin: const EdgeInsets.symmetric(horizontal: 12),
-                  width: 24,
-                  height: 24,
+                  width: 16,
+                  height: 16,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: index < _pin.length 
                         ? theme.colorScheme.primary 
-                        : theme.colorScheme.surfaceContainerHighest,
+                        : theme.colorScheme.outlineVariant,
                   ),
                 );
               }),
@@ -159,14 +159,14 @@ class _PinScreenState extends ConsumerState<PinScreen> {
         child: Container(
           width: 72,
           height: 72,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            color: Colors.transparent,
           ),
           alignment: Alignment.center,
           child: icon != null 
-              ? Icon(icon, size: 28)
-              : Text(label, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w500)),
+              ? Icon(icon, size: 28, color: theme.colorScheme.onSurface)
+              : Text(label, style: TextStyle(fontSize: 32, fontWeight: FontWeight.w400, color: theme.colorScheme.onSurface)),
         ),
       ),
     );

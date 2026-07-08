@@ -16,37 +16,36 @@ class ReconnectScreen extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
+          padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Icon(Icons.link_off, size: 64, color: theme.colorScheme.error),
-              const SizedBox(height: 24),
+              const SizedBox(height: 32),
               Text(
                 'Reconnect your Vault',
                 textAlign: TextAlign.center,
-                style: theme.textTheme.headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.headlineLarge,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Text(
                 message ??
                     'We lost access to your Vault folder. Pick the same folder '
                         'again to restore your documents.',
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
+                style: theme.textTheme.bodyLarge?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 48),
               FilledButton.icon(
                 onPressed: () =>
                     ref.read(vaultConnectionProvider.notifier).connect(),
                 icon: const Icon(Icons.folder_open_outlined),
                 label: const Text('Reconnect folder'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               TextButton(
                 onPressed: () =>
                     ref.read(vaultConnectionProvider.notifier).retry(),

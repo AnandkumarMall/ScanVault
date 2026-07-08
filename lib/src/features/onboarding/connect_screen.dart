@@ -17,27 +17,26 @@ class ConnectScreen extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
+          padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Icon(Icons.folder_special_outlined,
-                  size: 72, color: theme.colorScheme.primary),
-              const SizedBox(height: 24),
+                  size: 64, color: theme.colorScheme.primary),
+              const SizedBox(height: 32),
               Text(
                 'Welcome to $kAppName',
                 textAlign: TextAlign.center,
-                style: theme.textTheme.headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.headlineLarge,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Text(
                 'Your scans live in a folder you choose — not inside the app. '
                 'They stay even if you uninstall. Reinstall and reconnect the '
                 'same folder to get everything back.',
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
+                style: theme.textTheme.bodyLarge?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
@@ -45,11 +44,9 @@ class ConnectScreen extends ConsumerWidget {
               Text(
                 'Tip: pick or create a folder like "$kSuggestedVaultFolder".',
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodySmall,
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 48),
               FilledButton.icon(
                 onPressed: isLoading
                     ? null

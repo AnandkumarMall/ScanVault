@@ -56,187 +56,240 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final indexAsync = ref.watch(documentIndexProvider);
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: PreferredSize(
-        preferredSize: Size.fromHeight(_isSelectionMode ? kToolbarHeight : kToolbarHeight + 60),
-        child: ClipRRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: AppBar(
-              systemOverlayStyle: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
-              backgroundColor: theme.scaffoldBackgroundColor.withValues(alpha: 0.7),
-              elevation: 0,
-              title: _isSelectionMode
-                  ? Text('${_selectedIds.length} Selected', style: const TextStyle(fontWeight: FontWeight.bold))
-                  : const Text(
-                      'My Vault',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 28),
-                    ),
-              centerTitle: false,
-              bottom: _isSelectionMode ? null : PreferredSize(
-                preferredSize: const Size.fromHeight(60),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _buildHeader(context, ref),
+            Expanded(
+              child: indexAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (err, _) => _ErrorBody(
+                  message: '$err',
+                  onRetry: () => ref.read(documentIndexProvider.notifier).refresh(),
+                ),
+                data: (entries) => CustomScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  slivers: [
+                    if (!_isSelectionMode)
+                      SliverToBoxAdapter(
+                        child: _buildToolsSection(context, ref),
+                      ),
+                    if (entries.isEmpty)
+                      const SliverFillRemaining(
+                        child: _EmptyLibrary(),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.only(left: 20, right: 20, top: 12, bottom: 120),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, i) {
+                              final filteredEntries = entries.where((e) => e.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+                              if (i >= filteredEntries.length) return null;
+                              final entry = filteredEntries[i];
+                              final isSelected = _selectedIds.contains(entry.id);
+                              
+                              return TweenAnimationBuilder<double>(
+                                duration: Duration(milliseconds: 400 + (i * 50).clamp(0, 300)),
+                                curve: Curves.easeOutCubic,
+                                tween: Tween<double>(begin: 0, end: 1),
+                                builder: (context, value, child) {
+                                  return Transform.translate(
+                                    offset: Offset(0, 20 * (1 - value)),
+                                    child: Opacity(opacity: value, child: child),
+                                  );
+                                },
+                                child: _DocumentCard(
+                                  entry: entry,
+                                  isSelected: isSelected,
+                                  isSelectionMode: _isSelectionMode,
+                                  onTap: () {
+                                    if (_isSelectionMode) {
+                                      _toggleSelection(entry.id);
+                                    } else {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => DocumentDetailScreen(documentId: entry.id),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  onLongPress: () {
+                                    HapticFeedback.mediumImpact();
+                                    _toggleSelection(entry.id);
+                                  },
+                                ),
+                              );
+                            },
+                            childCount: entries.where((e) => e.name.toLowerCase().contains(_searchQuery.toLowerCase())).length,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      floatingActionButton: _isSelectionMode
+          ? null
+          : InkWell(
+              onTap: () => _startNewDocument(context, ref, null),
+              borderRadius: BorderRadius.circular(30),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.add_rounded, color: Colors.white, size: 22),
+                    const SizedBox(width: 8),
+                    const Text('New Scan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
+                  ],
+                ),
+              ),
+            ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      bottomNavigationBar: _isSelectionMode ? _buildSelectionBottomBar(context, ref) : null,
+    );
+  }
+
+  Widget _buildProfileMenu(BuildContext context, WidgetRef ref) {
+    return PopupMenuButton<String>(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Theme.of(context).dividerColor),
+      ),
+      elevation: 4,
+      position: PopupMenuPosition.under,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Theme.of(context).colorScheme.surface,
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: const Icon(Icons.person_outline_rounded, size: 20),
+      ),
+      onSelected: (value) {
+        if (value == 'disconnect') {
+          ref.read(vaultConnectionProvider.notifier).disconnect();
+        } else if (value == 'set_pin') {
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const PinScreen(isSettingPin: true),
+          )).then((_) => setState(() {}));
+        } else if (value == 'remove_pin') {
+          ref.read(vaultPrefsProvider).removePin().then((_) => setState(() {}));
+        }
+      },
+      itemBuilder: (context) {
+        final prefs = ref.read(vaultPrefsProvider);
+        return [
+          if (!prefs.hasPin)
+            const PopupMenuItem(value: 'set_pin', child: Text('Set PIN Lock'))
+          else
+            const PopupMenuItem(value: 'remove_pin', child: Text('Remove PIN Lock')),
+          const PopupMenuItem(value: 'disconnect', child: Text('Disconnect Vault')),
+        ];
+      },
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    if (_isSelectionMode) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: theme.dividerColor)),
+        ),
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.close_rounded),
+              onPressed: _clearSelection,
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(width: 12),
+            Text('${_selectedIds.length} Selected', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Documents', style: theme.textTheme.headlineLarge?.copyWith(letterSpacing: -1, fontWeight: FontWeight.w700)),
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Rescan Vault',
+                    onPressed: () => ref.read(documentIndexProvider.notifier).refresh(),
+                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                  ),
+                  const SizedBox(width: 8),
+                  _buildProfileMenu(context, ref),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Container(
+            height: 44,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Icon(Icons.search_rounded, size: 18, color: theme.colorScheme.onSurfaceVariant),
+                const SizedBox(width: 12),
+                Expanded(
                   child: TextField(
                     controller: _searchController,
                     onChanged: (val) => setState(() => _searchQuery = val),
+                    style: theme.textTheme.bodyMedium,
                     decoration: InputDecoration(
-                      hintText: 'Search documents...',
-                      prefixIcon: const Icon(Icons.search),
-                      filled: true,
-                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide.none,
-                      ),
+                      hintText: 'Search...',
+                      hintStyle: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      isDense: true,
                       contentPadding: EdgeInsets.zero,
                     ),
                   ),
                 ),
-              ),
-              actions: _isSelectionMode
-                  ? [
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: _clearSelection,
-                      ),
-                    ]
-                  : [
-                      IconButton(
-                        tooltip: 'Rescan Vault',
-                        onPressed: () => ref.read(documentIndexProvider.notifier).refresh(),
-                        icon: const Icon(Icons.refresh_rounded),
-                      ),
-                      PopupMenuButton<String>(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        onSelected: (value) {
-                          if (value == 'disconnect') {
-                            ref.read(vaultConnectionProvider.notifier).disconnect();
-                          } else if (value == 'set_pin') {
-                            Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => const PinScreen(isSettingPin: true),
-                            )).then((_) => setState(() {}));
-                          } else if (value == 'remove_pin') {
-                            ref.read(vaultPrefsProvider).removePin().then((_) => setState(() {}));
-                          }
-                        },
-                        itemBuilder: (context) {
-                          final prefs = ref.read(vaultPrefsProvider);
-                          return [
-                            if (!prefs.hasPin)
-                              const PopupMenuItem(value: 'set_pin', child: Text('Set PIN Lock'))
-                            else
-                              const PopupMenuItem(value: 'remove_pin', child: Text('Remove PIN Lock')),
-                            const PopupMenuItem(value: 'disconnect', child: Text('Disconnect Vault')),
-                          ];
-                        },
-                      ),
-                    ],
-            ),
-          ),
-        ),
-      ),
-      body: Stack(
-        children: [
-          // Background Gradient
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  theme.colorScheme.primary.withValues(alpha: 0.15),
-                  theme.scaffoldBackgroundColor,
-                ],
-                stops: const [0.0, 0.3],
-              ),
-            ),
-          ),
-          SafeArea(
-            child: indexAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, _) => _ErrorBody(
-                message: '$err',
-                onRetry: () => ref.read(documentIndexProvider.notifier).refresh(),
-              ),
-              data: (entries) => CustomScrollView(
-                physics: const BouncingScrollPhysics(),
-                slivers: [
-                  if (!_isSelectionMode)
-                    SliverToBoxAdapter(
-                      child: _buildToolsSection(context, ref),
-                    ),
-                  if (entries.isEmpty)
-                    const SliverFillRemaining(
-                      child: _EmptyLibrary(),
-                    )
-                  else
-                    SliverPadding(
-                      padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 120),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, i) {
-                            final filteredEntries = entries.where((e) => e.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
-                            if (i >= filteredEntries.length) return null;
-                            final entry = filteredEntries[i];
-                            final isSelected = _selectedIds.contains(entry.id);
-                            
-                            return TweenAnimationBuilder<double>(
-                              duration: Duration(milliseconds: 400 + (i * 100).clamp(0, 500)),
-                              curve: Curves.easeOutQuint,
-                              tween: Tween<double>(begin: 0, end: 1),
-                              builder: (context, value, child) {
-                                return Transform.translate(
-                                  offset: Offset(0, 50 * (1 - value)),
-                                  child: Opacity(
-                                    opacity: value,
-                                    child: child,
-                                  ),
-                                );
-                              },
-                              child: _DocumentCard(
-                                entry: entry,
-                                isSelected: isSelected,
-                                isSelectionMode: _isSelectionMode,
-                                onTap: () {
-                                  if (_isSelectionMode) {
-                                    _toggleSelection(entry.id);
-                                  } else {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => DocumentDetailScreen(documentId: entry.id),
-                                      ),
-                                    );
-                                  }
-                                },
-                                onLongPress: () {
-                                  HapticFeedback.mediumImpact();
-                                  _toggleSelection(entry.id);
-                                },
-                              ),
-                            );
-                          },
-                          childCount: entries.where((e) => e.name.toLowerCase().contains(_searchQuery.toLowerCase())).length,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+              ],
             ),
           ),
         ],
       ),
-      floatingActionButton: _isSelectionMode
-          ? null
-          : FloatingActionButton(
-              onPressed: () => _startNewDocument(context, ref, null),
-              child: const Icon(Icons.document_scanner_rounded, size: 28),
-            ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      bottomNavigationBar: _isSelectionMode ? _buildSelectionBottomBar(context, ref) : null,
     );
   }
 
@@ -716,31 +769,34 @@ class _ToolCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: color.withValues(alpha: 0.15),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: color, size: 32),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: theme.colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -795,93 +851,90 @@ class _DocumentCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Card(
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: isSelected
-              ? BorderSide(color: theme.colorScheme.primary, width: 2)
-              : BorderSide.none,
-        ),
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 72,
-                  height: 90,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Hero(
-                      tag: 'cover_${entry.id}',
-                      child: _CoverThumbnail(entry: entry),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        entry.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleLarge?.copyWith(fontSize: 18),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Icon(Icons.calendar_today_rounded, size: 14, color: theme.colorScheme.onSurfaceVariant),
-                          const SizedBox(width: 4),
-                          Text(
-                            _formatDate(entry.updatedAt),
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(Icons.file_copy_rounded, size: 14, color: theme.colorScheme.onSurfaceVariant),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${entry.pageCount} page${entry.pageCount == 1 ? '' : 's'}',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                if (isSelectionMode)
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Icon(
-                      isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                      color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-                      size: 28,
-                    ),
-                  )
-                else
-                  IconButton(
-                    icon: const Icon(Icons.more_vert_rounded),
-                    onPressed: onLongPress,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-              ],
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isSelected ? theme.colorScheme.primary.withValues(alpha: 0.1) : (isDark ? const Color(0xFF1E293B) : Colors.white),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? theme.colorScheme.primary : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+              width: 1,
             ),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 60,
+                height: 76,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Hero(
+                    tag: 'cover_${entry.id}',
+                    child: _CoverThumbnail(entry: entry),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today_rounded, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatDate(entry.updatedAt),
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(Icons.file_copy_rounded, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${entry.pageCount} page${entry.pageCount == 1 ? '' : 's'}',
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (isSelectionMode)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Icon(
+                    isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                    color: isSelected ? theme.colorScheme.primary : theme.colorScheme.outline,
+                    size: 24,
+                  ),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.more_vert_rounded),
+                  onPressed: onLongPress,
+                  color: theme.colorScheme.onSurfaceVariant,
+                  visualDensity: VisualDensity.compact,
+                ),
+            ],
           ),
         ),
       ),

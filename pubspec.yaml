@@ -59,6 +59,9 @@ dependencies:
   collection: ^1.19.0
   reorderable_grid_view: ^2.2.8
 
+  # Typography (Phase UI)
+  google_fonts: ^6.2.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
