@@ -6,13 +6,6 @@
 
 Scan or import images → auto-detect edges → crop & enhance → manage multi-page documents → export & share as PDF.
 
-<p align="center">
-  <img src="docs/screenshot-home.png" alt="Home screen" width="220"/>
-  <img src="docs/screenshot-crop.png" alt="Crop review" width="220"/>
-  <img src="docs/screenshot-enhance.png" alt="Enhance filters" width="220"/>
-  <img src="docs/screenshot-doc.png" alt="Document detail" width="220"/>
-</p>
-
 ---
 
 ## Why ScanVault?
