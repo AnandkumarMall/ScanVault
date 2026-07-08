@@ -7,10 +7,6 @@ import '../../data/cv/cv_processor.dart';
 import '../../data/cv/quad_geometry.dart';
 import '../../domain/models/edit_params.dart';
 
-/// Post-capture crop & detect step (PLAN.md §Phase 3). Walks the user through
-/// every captured/imported page, pre-filling the crop with an auto-detected
-/// document quad they can override by dragging the four corner handles. Pops with
-/// a `List<EditParams>` (one per input image, same order), or `null` if cancelled.
 class CropReviewScreen extends StatefulWidget {
   const CropReviewScreen({
     super.key,
@@ -137,10 +133,13 @@ class _CropReviewScreenState extends State<CropReviewScreen> {
                       Positioned.fill(
                         child: Padding(
                           padding: const EdgeInsets.all(24),
-                          child: CropEditor(
-                            image: page.image!,
-                            corners: page.corners,
-                            onChanged: _onCornersChanged,
+                          child: RotatedBox(
+                            quarterTurns: page.rotationQuarters,
+                            child: CropEditor(
+                              image: page.image!,
+                              corners: page.corners,
+                              onChanged: _onCornersChanged,
+                            ),
                           ),
                         ),
                       ),

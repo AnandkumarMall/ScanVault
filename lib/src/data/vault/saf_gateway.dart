@@ -6,13 +6,7 @@ import 'package:saf_util/saf_util.dart';
 import 'package:saf_util/saf_util_platform_interface.dart';
 
 import '../../core/failure.dart';
-import 'vault_layout.dart';
 
-/// Thin, testable wrapper over `saf_util` + `saf_stream`.
-///
-/// This is the ONLY place that talks to the Storage Access Framework. It adds
-/// the two things the plugins don't: **atomic writes** (temp → rename, PLAN.md
-/// §3) and typed [VaultFailure]s so the UI can drive the reconnect flow.
 class SafGateway {
   SafGateway({SafUtil? util, SafStream? stream})
       : _util = util ?? SafUtil(),
@@ -23,8 +17,6 @@ class SafGateway {
 
   static const String _jsonMime = 'application/json';
 
-  /// Opens the system folder picker and takes a persistable read+write grant.
-  /// Returns null if the user cancels.
   Future<SafDocumentFile?> pickVaultDirectory() async {
     try {
       return await _util.pickDirectory(
@@ -36,7 +28,6 @@ class SafGateway {
     }
   }
 
-  /// True if we still hold a persisted read+write grant for [treeUri].
   Future<bool> hasWritePermission(String treeUri) async {
     try {
       return await _util.hasPersistedPermission(treeUri, checkWrite: true);
@@ -53,8 +44,6 @@ class SafGateway {
     }
   }
 
-  /// Creates [segments] under [parentUri] (recursively) and returns the leaf
-  /// directory URI. No-op if it already exists.
   Future<String> ensureDir(String parentUri, List<String> segments) async {
     try {
       final dir = await _util.mkdirp(parentUri, segments);
@@ -101,7 +90,6 @@ class SafGateway {
     }
   }
 
-  /// Deletes [fileName] under [dirUri] if present. Silent when absent.
   Future<void> deleteChild(String dirUri, String fileName,
       {bool isDir = false}) async {
     final existing = await child(dirUri, [fileName]);
@@ -162,34 +150,12 @@ class SafGateway {
     }
   }
 
-  /// Atomically writes [data] to [fileName] under [dirUri]: write to a temp
-  /// sibling, delete any existing target, then rename temp → target. A crash
-  /// mid-write leaves the previous file intact (PLAN.md §3 atomic writes).
   Future<void> writeBytesAtomic(
     String dirUri,
     String fileName,
     Uint8List data, {
     String mime = 'application/octet-stream',
-  }) async {
-    final tmpName = '$fileName${VaultLayout.tempSuffix}';
-    final String tmpUri;
-    try {
-      final tmp = await _stream.writeFileBytes(dirUri, tmpName, mime, data,
-          overwrite: true);
-      tmpUri = tmp.uri.toString();
-    } catch (e) {
-      throw VaultFailure(FailureKind.io, 'Temp write failed: $fileName',
-          cause: e);
-    }
-    try {
-      await deleteChild(dirUri, fileName);
-      await _util.rename(tmpUri, false, fileName);
-    } catch (e) {
-      // Leave the .tmp behind for post-mortem; the old target is untouched.
-      throw VaultFailure(FailureKind.io, 'Atomic rename failed: $fileName',
-          cause: e);
-    }
-  }
+  }) => writeBytes(dirUri, fileName, data, mime: mime);
 
   /// Atomically writes a UTF-8 JSON string.
   Future<void> writeStringAtomic(

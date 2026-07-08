@@ -5,8 +5,6 @@ import 'doc_page.dart';
 /// shape changes so migrations can key off it (PLAN.md §3 version.json).
 const int kDocumentSchemaVersion = 1;
 
-/// The authoritative per-document record, persisted as `documents/<id>/meta.json`.
-/// `index.json` is only a cache derived from these (PLAN.md §3).
 class Document {
   const Document({
     required this.id,
@@ -18,10 +16,8 @@ class Document {
     this.appVersion = '',
   });
 
-  /// UUID (no timestamp-collision risk — PLAN.md §3).
   final String id;
 
-  /// Human display name ("hostel 4"); not used for the folder name.
   final String name;
 
   final DateTime createdAt;
@@ -32,8 +28,6 @@ class Document {
 
   int get pageCount => pages.length;
 
-  /// Relative path of the cover image (first page's display path), or null when
-  /// the document has no pages yet.
   String? get coverPath => pages.isEmpty ? null : pages.first.displayPath;
 
   Document copyWith({

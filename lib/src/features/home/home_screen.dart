@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,6 +11,7 @@ import '../../domain/models/index_entry.dart';
 import '../capture/camera_screen.dart';
 import '../capture/import_source.dart';
 import '../crop/crop_review_screen.dart';
+import '../enhance/enhance_screen.dart';
 
 /// The document library — a grid of document cards (PLAN.md §Document
 /// Management). In Phase 1 the grid is empty and the FAB creates a blank
@@ -115,27 +117,75 @@ class HomeScreen extends ConsumerWidget {
         fullscreenDialog: true,
       ),
     );
-    if (edits == null || !context.mounted) return;
+          if (edits == null || !context.mounted) return;
 
-    final name = await _promptName(context, defaultScanName(DateTime.now()));
-    if (name == null || !context.mounted) return;
+      final processor = ref.read(cvProcessorProvider);
+      _showProcessing(context);
+      final warped = <Uint8List>[];
+      try {
+        for (var i = 0; i < images.length; i++) {
+          final warpParams = EditParams(
+            corners: edits[i].corners,
+            rotationQuarters: edits[i].rotationQuarters,
+          );
+          final page = await processor.processPage(images[i], warpParams);
+          warped.add(page);
+        }
+      } catch (e) {
+        if (!context.mounted) return;
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Preview error: $e')),
+        );
+        return;
+      }
+      if (!context.mounted) return;
+      Navigator.of(context).pop();
 
-    final messenger = ScaffoldMessenger.of(context);
-    _showProcessing(context);
-    try {
-      await ref
-          .read(documentIndexProvider.notifier)
-          .createScannedDocument(name, images, edits);
-      if (context.mounted) Navigator.of(context).pop(); // dismiss progress
-      messenger.showSnackBar(SnackBar(
-        content: Text('Saved "$name" · ${images.length} '
-            'page${images.length == 1 ? '' : 's'}'),
-      ));
-    } catch (e) {
-      if (context.mounted) Navigator.of(context).pop();
-      messenger.showSnackBar(SnackBar(content: Text('Could not save: $e')));
-    }
-  }
+      final filtered = await Navigator.of(context).push<List<EditParams>>(
+        MaterialPageRoute(
+          builder: (_) => EnhanceScreen(
+            title: 'Enhance',
+            original: warped.first,
+            elided: edits.first,
+            processor: processor,
+          ),
+          fullscreenDialog: true,
+        ),
+      );
+      if (filtered == null || !context.mounted) return;
+
+      final allParams = <EditParams>[];
+      final enhance = filtered.first;
+      for (final edit in edits) {
+        allParams.add(
+          edit.copyWith(
+            filter: enhance.filter,
+            brightness: enhance.brightness,
+            contrast: enhance.contrast,
+            sharpness: enhance.sharpness,
+          ),
+        );
+      }
+
+      final name = await _promptName(context, defaultScanName(DateTime.now()));
+      if (name == null || !context.mounted) return;
+
+      final messenger = ScaffoldMessenger.of(context);
+      _showProcessing(context);
+      try {
+        await ref
+            .read(documentIndexProvider.notifier)
+            .createScannedDocument(name, images, allParams);
+        if (context.mounted) Navigator.of(context).pop();
+        messenger.showSnackBar(SnackBar(
+          content: Text('Saved "$name" - ${images.length} page${images.length == 1 ? '' : 's'}'),
+        ));
+      } catch (e) {
+        if (context.mounted) Navigator.of(context).pop();
+        messenger.showSnackBar(SnackBar(content: Text('Could not save: $e')));
+ }
+}
 
   /// A blocking, non-dismissible progress dialog shown while pages are warped
   /// and encoded (full-resolution OpenCV work can take a moment per page).

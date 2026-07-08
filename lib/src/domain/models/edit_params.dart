@@ -2,8 +2,6 @@ import 'dart:convert';
 
 import '../../core/json_utils.dart';
 
-/// A normalized 2D point (0..1 relative to the source image), so corner crop
-/// data survives resolution changes and thumbnail regeneration.
 class NormPoint {
   const NormPoint(this.x, this.y);
 
@@ -23,8 +21,6 @@ class NormPoint {
   int get hashCode => Object.hash(x, y);
 }
 
-/// The photographic filter applied to a page. OpenCV single-pass pipelines
-/// (PLAN.md §Enhance) — actual processing lands in Phase 4.
 enum PageFilter { original, autoColor, grayscale, blackAndWhite }
 
 PageFilter _filterFromName(String name) => PageFilter.values.firstWhere(
@@ -32,8 +28,6 @@ PageFilter _filterFromName(String name) => PageFilter.values.firstWhere(
       orElse: () => PageFilter.original,
     );
 
-/// Non-destructive edit parameters for one page (PLAN.md §1 "Non-destructive").
-/// The processed image is regenerable from the original + these params.
 class EditParams {
   const EditParams({
     this.corners,
@@ -44,16 +38,12 @@ class EditParams {
     this.sharpness = 0,
   });
 
-  /// The 4 crop corners (TL, TR, BR, BL) in normalized coords, or null if the
-  /// page has not been cropped yet (use the full frame).
   final List<NormPoint>? corners;
 
-  /// Rotation in 90° steps (0..3), applied after warp.
   final int rotationQuarters;
 
   final PageFilter filter;
 
-  /// -100..100 adjustment sliders (0 = no change).
   final double brightness;
   final double contrast;
   final double sharpness;
@@ -112,8 +102,6 @@ class EditParams {
     );
   }
 
-  /// A short, stable hash of the params used to version cached thumbnails /
-  /// processed images (PLAN.md §3 "Thumbnails versioned by an edit-hash").
   String editHash() {
     final canonical = jsonEncode(toJson());
     // Cheap deterministic FNV-1a — no crypto needed, just cache invalidation.

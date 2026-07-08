@@ -13,10 +13,6 @@ import 'saf_gateway.dart';
 import 'vault_layout.dart';
 import 'vault_prefs.dart';
 
-/// The persistable bytes for one processed page (Phase 3): the untouched capture,
-/// the warped/enhanced result, a thumbnail, and the crop [EditParams] that make
-/// the processed image regenerable. Kept free of any OpenCV dependency so the
-/// repository stays testable without native libraries.
 class ScannedPageData {
   const ScannedPageData({
     required this.original,
@@ -31,11 +27,6 @@ class ScannedPageData {
   final EditParams edit;
 }
 
-/// High-level operations over the Vault. Coordinates the SAF [SafGateway], the
-/// prefs-stored URI ([VaultPrefs]), and the thin/rebuildable index (PLAN.md §3).
-///
-/// A repository instance is bound to one connected Vault. `connect`/`reconnect`
-/// establish that binding; the rest assume it exists.
 class VaultRepository {
   VaultRepository({
     required SafGateway gateway,
@@ -62,8 +53,6 @@ class VaultRepository {
 
   // ── Connection lifecycle ─────────────────────────────────────────────────
 
-  /// Prompts the user to pick a folder, persists it, and initializes structure.
-  /// Returns null if the user cancels the picker.
   Future<VaultConfig?> connectViaPicker() async {
     final picked = await _gateway.pickVaultDirectory();
     if (picked == null) return null;
@@ -74,9 +63,6 @@ class VaultRepository {
     return config;
   }
 
-  /// Restores a previously-connected Vault from prefs. Returns null if there is
-  /// no saved Vault. Throws [VaultFailure.permissionLost] if the saved grant is
-  /// gone (caller shows the reconnect flow).
   Future<VaultConfig?> reconnectFromPrefs() async {
     final saved = _prefs.read();
     if (saved == null) return null;
@@ -126,8 +112,6 @@ class VaultRepository {
 
   // ── Index (thin, rebuildable cache) ──────────────────────────────────────
 
-  /// Loads the home-screen index. If index.json is missing or corrupt, it is
-  /// rebuilt from each document's meta.json (PLAN.md §3).
   Future<List<IndexEntry>> loadIndex() async {
     final root = _requireRoot();
     final raw = await _gateway.readString(root, VaultLayout.indexFile);
@@ -145,9 +129,6 @@ class VaultRepository {
     return rebuildIndex();
   }
 
-  /// Rescans `documents/` and rebuilds index.json from every meta.json. This is
-  /// the recovery path when the index is lost or the user edited the folder in
-  /// a file manager.
   Future<List<IndexEntry>> rebuildIndex() async {
     final docsUri = await _requireDocumentsUri();
     final children = await _gateway.list(docsUri);
@@ -176,7 +157,6 @@ class VaultRepository {
 
   // ── Documents ────────────────────────────────────────────────────────────
 
-  /// Creates an empty document (folder + meta.json) and updates the index.
   Future<Document> createDocument(String name, {DateTime? now}) async {
     final docsUri = await _requireDocumentsUri();
     final id = _uuid.v4();
@@ -209,10 +189,6 @@ class VaultRepository {
     return json == null ? null : Document.fromJson(json);
   }
 
-  /// Appends captured/imported [images] (JPEG bytes) as new pages of document
-  /// [docId]: each is written as an `original/<pageId>.jpg` source, then the
-  /// document's meta.json + index row are persisted once (PLAN.md §2). Page
-  /// files are named by UUID so deletes/reorders (Phase 5) never collide.
   Future<Document> addPages(
     String docId,
     List<Uint8List> images, {
@@ -245,11 +221,6 @@ class VaultRepository {
   Future<Document> addPage(String docId, Uint8List image, {DateTime? now}) =>
       addPages(docId, [image], now: now);
 
-  /// Appends fully-processed pages (Phase 3): for each page writes the untouched
-  /// `original/`, the warped/enhanced `processed/`, and a cached `thumbs/` image,
-  /// and records the crop [EditParams] so the processed image stays regenerable
-  /// (PLAN.md §3 non-destructive + cache-processed). meta.json + the index row
-  /// are persisted once at the end.
   Future<Document> addScannedPages(
     String docId,
     List<ScannedPageData> pages, {
