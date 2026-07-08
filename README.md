@@ -21,15 +21,16 @@ Scan or import images → auto-detect edges → crop & enhance → manage multi-
 
 ---
 
-## Core Features (Phase 1–4 complete)
+## Core Features (Phases 1–7 complete)
 
-* **Capture & import** — Live camera preview + batch shutter, or import multiple images from gallery (photo picker).
+* **PIN Lock** — Optional 4-digit passcode to secure access to the app.
+* **Capture & import** — Live camera preview + batch shutter, or import multiple images from gallery (photo picker) and PDFs.
 * **Auto edge detection** — OpenCV contour pipeline (grayscale → Gaussian blur → Canny → largest 4-point contour) runs in a background isolate on a downscaled frame.
 * **Manual crop** — 4 draggable corner handles with magnifier loupe; user can always override auto-detection.
 * **Perspective correction** — `warpPerspective` flattens/deskews to a clean rectangle at full resolution.
 * **Enhance / filters** — Original, **Magic** (CLAHE on L channel), **Grayscale**, **B&W scan** (adaptive threshold), plus **Brightness / Contrast / Sharpness** sliders with live preview.
-* **Multi-page documents** — Add, retake, delete, reorder pages (Phase 5).
-* **Export & share** — Compile to PDF (A4 / Letter / Auto-fit, quality slider), share via Android share sheet (WhatsApp, Email, Drive, …).
+* **Multi-page documents** — Add, retake, delete, drag-and-drop to reorder pages. Merge multiple documents into one.
+* **Export & share** — Compile to PDF (A4 / Letter / Auto-fit, quality slider), share via Android share sheet (as PDF or Images).
 
 ---
 
@@ -113,9 +114,9 @@ ScanVault/
 | **2** | Camera capture + gallery import, save raw pages | ✅ |
 | **3** | OpenCV detect & crop (auto edges, manual corners, warp) | ✅ |
 | **4** | **Enhance** — OpenCV filters (B&W, Grayscale, Magic, sliders) | ✅ |
-| **5** | Multi-page docs, reorder/delete/retake, rename, search | 🔲 |
-| **6** | PDF export/import + share, doc→image-folder export | 🔲 |
-| **7** | Polish, dark mode, performance, APK-size hardening | 🔲 |
+| **5** | Multi-page docs, drag/drop reorder, rename, merge, PIN lock | ✅ |
+| **6** | PDF export/import + share, share as images | ✅ |
+| **7** | Polish, dark mode, performance/memory optimizations, APK-size | ✅ |
 | **8** | Deferred backlog: OCR, undo, camera controls, presets, etc. | 🔲 |
 
 ---
