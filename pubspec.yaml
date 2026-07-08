@@ -16,7 +16,7 @@ dependencies:
   flutter_riverpod: ^2.6.1
 
   # Camera capture + live preview (Phase 2)
-  camera: ^0.11.0
+  camera: ^0.12.0+1
 
   # Gallery import via the Android photo picker (Phase 2)
   image_picker: ^1.1.2
@@ -49,7 +49,7 @@ dependencies:
   # pdfrx: ^1.0.90
 
   # Android share sheet (Phase 6)
-  share_plus: ^10.1.2
+  share_plus: ^13.2.0
 
   # UUID document ids + filesystem paths
   uuid: ^4.5.1
