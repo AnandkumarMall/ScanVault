@@ -40,3 +40,10 @@ Thumbs.db
 # App-generated (never commit user Vault data)
 /exports/
 /cache/
+
+# Local planning docs (not committed)
+PLAN.md
+PHASE_5_6_PLAN.md
+
+# Claude Code project memory & settings
+.claude/
