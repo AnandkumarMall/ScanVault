@@ -61,9 +61,11 @@ class _PinScreenState extends ConsumerState<PinScreen> {
       final savedPin = prefs.getPin();
       if (savedPin == _pin) {
         // PIN correct, go to Home Screen
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+        if (mounted) {
+          await Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
+        }
       } else {
         setState(() {
           _error = 'Incorrect PIN';

@@ -15,12 +15,13 @@ class ScanVaultApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
     return MaterialApp(
       title: kAppName,
       debugShowCheckedModeBanner: false,
       theme: ScanVaultTheme.light(),
       darkTheme: ScanVaultTheme.dark(),
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       home: const _RootGate(),
     );
   }

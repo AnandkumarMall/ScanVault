@@ -9,3 +9,12 @@
 # dartcv4/OpenCV run through dart:ffi against bundled .so files — no Java/Kotlin
 # reflection to preserve. Nothing extra required here today; keep this note so
 # future native plugins that DO use reflection get their -keep rules added.
+
+-dontwarn com.huawei.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.chromium.**
+-dontwarn org.conscrypt.**
+
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.** { *; }
+-keep class com.cunning_document_scanner.** { *; }

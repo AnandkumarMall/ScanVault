@@ -1,53 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scanvault/src/domain/models/document.dart';
 import 'package:scanvault/src/domain/models/doc_page.dart';
-import 'package:scanvault/src/domain/models/edit_params.dart';
+
 import 'package:scanvault/src/domain/models/index_entry.dart';
 
 void main() {
-  group('EditParams', () {
-    test('default is identity', () {
-      expect(const EditParams().isIdentity, isTrue);
-    });
-
-    test('json round-trip preserves corners and sliders', () {
-      const params = EditParams(
-        corners: [
-          NormPoint(0.1, 0.1),
-          NormPoint(0.9, 0.1),
-          NormPoint(0.9, 0.9),
-          NormPoint(0.1, 0.9),
-        ],
-        rotationQuarters: 1,
-        filter: PageFilter.blackAndWhite,
-        brightness: 10,
-        contrast: -5,
-        sharpness: 3,
-      );
-      final restored = EditParams.fromJson(params.toJson());
-      expect(restored.corners, params.corners);
-      expect(restored.rotationQuarters, 1);
-      expect(restored.filter, PageFilter.blackAndWhite);
-      expect(restored.brightness, 10);
-      expect(restored.contrast, -5);
-      expect(restored.sharpness, 3);
-    });
-
-    test('editHash is stable and changes with params', () {
-      const a = EditParams(filter: PageFilter.grayscale);
-      const b = EditParams(filter: PageFilter.grayscale);
-      const c = EditParams(filter: PageFilter.blackAndWhite);
-      expect(a.editHash(), b.editHash());
-      expect(a.editHash(), isNot(c.editHash()));
-    });
-
-    test('fromJson tolerates garbage', () {
-      final p = EditParams.fromJson({'filter': 'nonsense', 'corners': 'x'});
-      expect(p.filter, PageFilter.original);
-      expect(p.corners, isNull);
-    });
-  });
-
   group('Document', () {
     test('json round-trip preserves pages and cover', () {
       final doc = Document(

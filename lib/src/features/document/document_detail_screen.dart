@@ -6,20 +6,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:printing/printing.dart';
-import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../app/providers.dart';
-import '../../data/cv/cv_processor.dart';
 import '../../domain/models/document.dart';
+import '../../data/vault/vault_repository.dart';
 import '../../domain/models/doc_page.dart';
-import '../../domain/models/edit_params.dart';
-import '../../data/vault/vault_repository.dart' show ScannedPageData;
-import '../capture/camera_screen.dart';
-import '../capture/import_source.dart';
-import '../crop/crop_review_screen.dart';
-import '../enhance/enhance_screen.dart';
-import 'page_review_screen.dart';
+import 'page_viewer_screen.dart';
+import 'package:cunning_document_scanner/cunning_document_scanner.dart';
+import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import 'page_viewer_screen.dart';
 
 /// Screen for viewing and managing pages within a document.
@@ -117,95 +112,22 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
 
   Future<void> _addPage() async {
     if (_document == null) return;
-
-    final result = await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const CameraCaptureScreen(),
-        fullscreenDialog: true,
-      ),
-    );
-    if (result == null || !mounted) return;
-
-    List<Uint8List> images = [];
-    if (result is List<Uint8List>) {
-      images = result;
-    } else if (result == 'gallery') {
-      images = await pickImagesFromGallery();
-    } else if (result == 'pdf') {
-      images = await _pickAndRasterizePdf(context);
+    
+    List<String> images = [];
+    try {
+      images = await CunningDocumentScanner.getPictures(isGalleryImportAllowed: true) ?? [];
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Scanner error: $e')));
+      return;
     }
     
     if (images.isEmpty || !mounted) return;
 
-    // Detect & crop each page
-    final processor = ref.read(cvProcessorProvider);
-    final edits = await Navigator.of(context).push<List<EditParams>>(
-      MaterialPageRoute(
-        builder: (_) => CropReviewScreen(
-          images: images,
-          processor: processor,
-        ),
-        fullscreenDialog: true,
-      ),
-    );
-    if (edits == null || !mounted) return;
-
-    // Enhance each page
-    _showProcessing(context);
-    Uint8List firstProcessed;
-    try {
-      firstProcessed = await processor.processPage(images.first, edits.first);
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-      return;
-    }
-    if (!mounted) return;
-    Navigator.of(context).pop();
-
-    final filtered = await Navigator.of(context).push<List<EditParams>>(
-      MaterialPageRoute(
-        builder: (_) => EnhanceScreen(
-          title: 'Enhance',
-          original: firstProcessed,
-          elided: edits.first,
-          processor: processor,
-        ),
-        fullscreenDialog: true,
-      ),
-    );
-    if (filtered == null || !mounted) return;
-
-    // Apply same enhancement to all pages
-    final allParams = <EditParams>[];
-    final enhance = filtered.first;
-    for (final edit in edits) {
-      allParams.add(
-        edit.copyWith(
-          filter: enhance.filter,
-          brightness: enhance.brightness,
-          contrast: enhance.contrast,
-          sharpness: enhance.sharpness,
-        ),
-      );
-    }
-
-    // Process and add pages
     _showProcessing(context);
     try {
       final repo = ref.read(vaultRepositoryProvider);
-      final pages = <ScannedPageData>[];
-      for (var i = 0; i < images.length; i++) {
-        final built = await processor.buildPage(images[i], allParams[i]);
-        pages.add(ScannedPageData(
-          original: built.original,
-          processed: built.processed,
-          thumbnail: built.thumbnail,
-          edit: built.edit,
-        ));
-      }
-      final updated = await repo.addScannedPages(widget.documentId, pages);
+      final updated = await repo.addScannedPages(widget.documentId, images);
       if (!mounted) return;
       Navigator.of(context).pop();
       setState(() => _document = updated);
@@ -222,136 +144,21 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
   }
 
   Future<void> _retakePage(int index) async {
-    if (_document == null) return;
-
-    final result = await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const CameraCaptureScreen(),
-        fullscreenDialog: true,
-      ),
-    );
-    if (result == null || !mounted) return;
-
-    List<Uint8List> images = [];
-    if (result is List<Uint8List>) {
-      images = result;
-    } else if (result == 'gallery') {
-      images = await pickImagesFromGallery();
-    } else if (result == 'pdf') {
-      images = await _pickAndRasterizePdf(context);
-    }
-    
-    if (images.isEmpty || !mounted) return;
-
-    final processor = ref.read(cvProcessorProvider);
-    final edits = await Navigator.of(context).push<List<EditParams>>(
-      MaterialPageRoute(
-        builder: (_) => CropReviewScreen(
-          images: images,
-          processor: processor,
-        ),
-        fullscreenDialog: true,
-      ),
-    );
-    if (edits == null || !mounted) return;
-
-    _showProcessing(context);
-    Uint8List retakeProcessed;
-    try {
-      retakeProcessed = await processor.processPage(images.first, edits.first);
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-      return;
-    }
-    if (!mounted) return;
-    Navigator.of(context).pop();
-
-    final filtered = await Navigator.of(context).push<List<EditParams>>(
-      MaterialPageRoute(
-        builder: (_) => EnhanceScreen(
-          title: 'Enhance',
-          original: retakeProcessed,
-          elided: edits.first,
-          processor: processor,
-        ),
-        fullscreenDialog: true,
-      ),
-    );
-    if (filtered == null || !mounted) return;
-
-    final newEdit = filtered.first.copyWith(corners: edits.first.corners);
-
-    _showProcessing(context);
-    try {
-      final repo = ref.read(vaultRepositoryProvider);
-      final built = await processor.buildPage(images.first, newEdit);
-      final updated = await repo.replacePage(
-        widget.documentId,
-        index,
-        images.first,
-        newEdit,
-        processor: (orig, edit) => processor.buildPage(orig, edit)
-            .then((p) => (p.processed, p.thumbnail)),
-      );
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      setState(() => _document = updated);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Page replaced')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to retake: $e')),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Retake not supported')));
   }
 
   Future<void> _editPage(int index) async {
     if (_document == null) return;
 
-    final processor = ref.read(cvProcessorProvider);
-
-    final result = await Navigator.of(context).push<(int, EditParams)>(
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PageViewerScreen(
           document: _document!,
           initialIndex: index,
-          processor: processor,
         ),
         fullscreenDialog: true,
       ),
     );
-
-    if (result != null && mounted) {
-      final (editedIndex, newEdit) = result;
-      _showProcessing(context);
-      try {
-        final repo = ref.read(vaultRepositoryProvider);
-        final updated = await repo.updatePageEdit(
-          widget.documentId,
-          editedIndex,
-          newEdit,
-          processor: (orig, edit) => processor.buildPage(orig, edit)
-              .then((p) => (p.processed, p.thumbnail)),
-        );
-        if (!mounted) return;
-        Navigator.of(context).pop();
-        setState(() => _document = updated);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Page updated')),
-        );
-      } catch (e) {
-        if (!mounted) return;
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update: $e')),
-        );
-      }
-    }
   }
 
   Future<void> _renameDocument() async {
@@ -598,6 +405,7 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
     );
     if (result == null || result.files.single.path == null) return [];
 
+    if (!context.mounted) return [];
     _showProcessing(context);
     try {
       final pdfDoc = await PdfDocument.openFile(result.files.single.path!);
@@ -625,7 +433,7 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
           uiImage.dispose();
         }
       }
-      pdfDoc.dispose();
+      await pdfDoc.dispose();
       if (!context.mounted) return [];
       Navigator.of(context).pop(); // dismiss loading
       return images;
@@ -919,12 +727,11 @@ class _PageThumbnail extends ConsumerWidget {
     );
 
     final path = page.thumbPath ?? page.displayPath;
-    if (path == null) return placeholder;
 
     final bytesAsync = ref.watch(docFileBytesProvider((
       docId: documentId,
       path: path,
-      version: page.edit.hashCode,
+      version: 0,
     )));
 
     // We need the document ID for the provider key - use a custom key
@@ -998,6 +805,3 @@ class _AddPageTile extends StatelessWidget {
     );
   }
 }
-
-/// Source for adding a new page.
-enum _CaptureSource { camera, gallery, pdf }

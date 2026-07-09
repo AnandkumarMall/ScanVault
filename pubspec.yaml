@@ -16,8 +16,6 @@ dependencies:
   flutter_riverpod: ^2.6.1
 
   # Camera capture + live preview (Phase 2)
-  camera: ^0.12.0+1
-
   # Gallery import via the Android photo picker (Phase 2)
   image_picker: ^1.1.2
 
@@ -26,9 +24,6 @@ dependencies:
   # bundles libdartcv.so into the APK; `dartcv4` is the pure-Dart bindings we import
   # (`package:dartcv4/dartcv.dart`). BOTH are required, and native assets must be
   # enabled once per machine: `flutter config --enable-native-assets`.
-  opencv_dart: ^1.1.1
-  dartcv4: ^1.1.1
-
   # Pure-Dart image encode/rotate fallbacks
   image: ^4.3.0
 
@@ -61,6 +56,7 @@ dependencies:
 
   # Typography (Phase UI)
   google_fonts: ^6.2.1
+  cunning_document_scanner: ^2.5.0
 
 dev_dependencies:
   flutter_test:

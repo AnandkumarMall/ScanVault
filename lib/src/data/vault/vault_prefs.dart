@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/models/vault_config.dart';
@@ -12,6 +13,7 @@ class VaultPrefs {
   static const String _kTreeUri = 'vault.treeUri';
   static const String _kDisplayName = 'vault.displayName';
   static const String _kPin = 'vault.pin';
+  static const String _kThemeMode = 'app.themeMode';
 
   static Future<VaultPrefs> load() async =>
       VaultPrefs(await SharedPreferences.getInstance());
@@ -51,5 +53,21 @@ class VaultPrefs {
 
   Future<void> removePin() async {
     await _prefs.remove(_kPin);
+  }
+
+  ThemeMode getThemeMode() {
+    final mode = _prefs.getString(_kThemeMode);
+    switch (mode) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      default:
+        return ThemeMode.system;
+    }
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    await _prefs.setString(_kThemeMode, mode.name);
   }
 }

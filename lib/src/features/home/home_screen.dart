@@ -1,6 +1,8 @@
-import 'dart:typed_data';
-import 'dart:ui';
 
+
+import 'dart:io';
+
+import 'package:cunning_document_scanner/cunning_document_scanner.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,17 +11,13 @@ import 'package:image/image.dart' as img;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
-import '../../app/constants.dart';
 import '../../app/providers.dart';
 import '../../domain/models/document.dart';
-import '../../domain/models/edit_params.dart';
 import '../../domain/models/index_entry.dart';
-import '../capture/camera_screen.dart';
-import '../capture/import_source.dart';
-import '../crop/crop_review_screen.dart';
+import '../../data/vault/vault_repository.dart';
 import '../document/document_detail_screen.dart';
-import '../enhance/enhance_screen.dart';
 import '../auth/pin_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -195,16 +193,54 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           )).then((_) => setState(() {}));
         } else if (value == 'remove_pin') {
           ref.read(vaultPrefsProvider).removePin().then((_) => setState(() {}));
+        } else if (value == 'theme_system') {
+          ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.system);
+        } else if (value == 'theme_light') {
+          ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.light);
+        } else if (value == 'theme_dark') {
+          ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.dark);
         }
       },
       itemBuilder: (context) {
         final prefs = ref.read(vaultPrefsProvider);
+        final themeMode = ref.watch(themeModeProvider);
         return [
           if (!prefs.hasPin)
             const PopupMenuItem(value: 'set_pin', child: Text('Set PIN Lock'))
           else
             const PopupMenuItem(value: 'remove_pin', child: Text('Remove PIN Lock')),
           const PopupMenuItem(value: 'disconnect', child: Text('Disconnect Vault')),
+          const PopupMenuDivider(),
+          PopupMenuItem(
+            value: 'theme_system',
+            child: Row(
+              children: [
+                Icon(Icons.brightness_auto, color: themeMode == ThemeMode.system ? Theme.of(context).colorScheme.primary : null),
+                const SizedBox(width: 12),
+                Text('System Theme', style: TextStyle(color: themeMode == ThemeMode.system ? Theme.of(context).colorScheme.primary : null)),
+              ]
+            ),
+          ),
+          PopupMenuItem(
+            value: 'theme_light',
+            child: Row(
+              children: [
+                Icon(Icons.light_mode, color: themeMode == ThemeMode.light ? Theme.of(context).colorScheme.primary : null),
+                const SizedBox(width: 12),
+                Text('Light Theme', style: TextStyle(color: themeMode == ThemeMode.light ? Theme.of(context).colorScheme.primary : null)),
+              ]
+            ),
+          ),
+          PopupMenuItem(
+            value: 'theme_dark',
+            child: Row(
+              children: [
+                Icon(Icons.dark_mode, color: themeMode == ThemeMode.dark ? Theme.of(context).colorScheme.primary : null),
+                const SizedBox(width: 12),
+                Text('Dark Theme', style: TextStyle(color: themeMode == ThemeMode.dark ? Theme.of(context).colorScheme.primary : null)),
+              ]
+            ),
+          ),
         ];
       },
     );
@@ -317,19 +353,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: _ToolCard(
-                  icon: Icons.photo_library_rounded,
-                  title: 'Gallery',
-                  color: const Color(0xFF4FC3F7),
-                  onTap: () => _startNewDocument(context, ref, 'gallery'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _ToolCard(
                   icon: Icons.camera_alt_rounded,
                   title: 'Scan',
                   color: Theme.of(context).colorScheme.primary,
-                  onTap: () => _startNewDocument(context, ref, 'camera'),
+                  onTap: () => _startNewDocument(context, ref, null),
                 ),
               ),
             ],
@@ -353,11 +380,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               tooltip: 'Rename',
               onPressed: () => _renameSelected(context, ref),
               icon: Icon(Icons.edit_outlined, color: theme.colorScheme.primary),
-            ),
-            IconButton(
-              tooltip: 'Share Images',
-              onPressed: () => _exportSelectedImages(context, ref),
-              icon: Icon(Icons.image_outlined, color: theme.colorScheme.primary),
             ),
             IconButton(
               tooltip: 'Export PDF',
@@ -442,7 +464,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       Navigator.of(context).pop();
       _clearSelection();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Successfully merged ${ids.length} documents into "$name"')));
-      ref.read(documentIndexProvider.notifier).refresh();
+      await ref.read(documentIndexProvider.notifier).refresh();
     } catch (e) {
       if (!context.mounted) return;
       Navigator.of(context).pop();
@@ -458,14 +480,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final vault = ref.read(vaultRepositoryProvider);
       final exporter = ref.read(pdfExportServiceProvider);
       
-      // Load all selected documents fully
       final docs = <Document>[];
       for (final id in ids) {
         final doc = await vault.readDocument(id);
         if (doc != null) docs.add(doc);
       }
       
-      // Combine all pages into one temporary document for export
       final combinedPages = docs.expand((d) => d.pages).toList();
       final combinedDoc = Document(
         id: 'export_temp',
@@ -477,7 +497,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
       final bytes = await exporter.exportPdf(document: combinedDoc, vault: vault);
       if (!context.mounted) return;
-      Navigator.of(context).pop(); // dismiss loading
+      Navigator.of(context).pop(); 
       
       await Printing.sharePdf(bytes: bytes, filename: '${combinedDoc.name}.pdf');
       _clearSelection();
@@ -485,45 +505,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!context.mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to export: $e')));
-    }
-  }
-
-  Future<void> _exportSelectedImages(BuildContext context, WidgetRef ref) async {
-    final id = _selectedIds.single;
-    _showProcessing(context);
-    try {
-      final vault = ref.read(vaultRepositoryProvider);
-      final doc = await vault.readDocument(id);
-      if (doc == null || doc.pages.isEmpty) {
-        if (!context.mounted) return;
-        Navigator.of(context).pop();
-        return;
-      }
-      
-      final files = <XFile>[];
-      for (int i = 0; i < doc.pages.length; i++) {
-        final page = doc.pages[i];
-        if (page.processedPath == null) continue;
-        final bytes = await vault.readDocumentFile(id, page.processedPath!);
-        if (bytes != null) {
-          files.add(XFile.fromData(
-            bytes,
-            name: '${doc.name}_${i + 1}.jpg',
-            mimeType: 'image/jpeg',
-          ));
-        }
-      }
-      
-      if (!context.mounted) return;
-      Navigator.of(context).pop();
-      if (files.isNotEmpty) {
-        await Share.shareXFiles(files, text: doc.name);
-      }
-      _clearSelection();
-    } catch (e) {
-      if (!context.mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to export images: $e')));
     }
   }
 
@@ -542,8 +523,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!context.mounted) return;
       Navigator.of(context).pop();
       _clearSelection();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Document renamed')));
-      ref.read(documentIndexProvider.notifier).refresh();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Document renamed')));
+      await ref.read(documentIndexProvider.notifier).refresh();
     } catch (e) {
       if (!context.mounted) return;
       Navigator.of(context).pop();
@@ -552,103 +533,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _startNewDocument(BuildContext context, WidgetRef ref, String? forceSource) async {
-    List<Uint8List> images = [];
+    List<String> images = [];
     
-    if (forceSource == 'gallery') {
-      images = await pickImagesFromGallery();
-    } else if (forceSource == 'pdf') {
-      images = await _pickAndRasterizePdf(context);
+    if (forceSource == 'pdf') {
+      final pdfImages = await _pickAndRasterizePdf(context);
+      if (pdfImages.isEmpty) return;
+      final tempDir = await getTemporaryDirectory();
+      for (int i = 0; i < pdfImages.length; i++) {
+        final f = File('${tempDir.path}/pdf_page_$i.jpg');
+        await f.writeAsBytes(pdfImages[i]);
+        images.add(f.path);
+      }
     } else {
-      final result = await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => const CameraCaptureScreen(),
-          fullscreenDialog: true,
-        ),
-      );
-      if (result == null || !context.mounted) return;
-
-      if (result is List<Uint8List>) {
-        images = result;
-      } else if (result == 'gallery') {
-        images = await pickImagesFromGallery();
-      } else if (result == 'pdf') {
-        images = await _pickAndRasterizePdf(context);
+      try {
+        images = await CunningDocumentScanner.getPictures(isGalleryImportAllowed: true) ?? [];
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Scanner error: $e')));
+        return;
       }
     }
     
     if (images.isEmpty || !context.mounted) return;
 
-    final edits = await Navigator.of(context).push<List<EditParams>>(
-      MaterialPageRoute(
-        builder: (_) => CropReviewScreen(
-          images: images,
-          processor: ref.read(cvProcessorProvider),
-        ),
-        fullscreenDialog: true,
-      ),
-    );
-    if (edits == null || !context.mounted) return;
-
-    final processor = ref.read(cvProcessorProvider);
-    _showProcessing(context);
-    final warped = <Uint8List>[];
-    try {
-      for (var i = 0; i < images.length; i++) {
-        final warpParams = EditParams(
-          corners: edits[i].corners,
-          rotationQuarters: edits[i].rotationQuarters,
-        );
-        final page = await processor.processPage(images[i], warpParams);
-        warped.add(page);
-      }
-    } catch (e) {
-      if (!context.mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Preview error: $e')));
-      return;
-    }
-    if (!context.mounted) return;
-    Navigator.of(context).pop();
-
-    final filtered = await Navigator.of(context).push<List<EditParams>>(
-      MaterialPageRoute(
-        builder: (_) => EnhanceScreen(
-          title: 'Enhance',
-          original: warped.first,
-          elided: edits.first,
-          processor: processor,
-        ),
-        fullscreenDialog: true,
-      ),
-    );
-    if (filtered == null || !context.mounted) return;
-
-    final allParams = <EditParams>[];
-    final enhance = filtered.first;
-    for (final edit in edits) {
-      allParams.add(
-        edit.copyWith(
-          filter: enhance.filter,
-          brightness: enhance.brightness,
-          contrast: enhance.contrast,
-          sharpness: enhance.sharpness,
-        ),
-      );
-    }
-
-    final name = await _promptName(context, defaultScanName(DateTime.now()));
+    final name = await _promptName(context, 'Scanned Document');
     if (name == null || !context.mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
     _showProcessing(context);
     try {
-      await ref
-          .read(documentIndexProvider.notifier)
-          .createScannedDocument(name, images, allParams);
-      if (context.mounted) Navigator.of(context).pop();
-      messenger.showSnackBar(SnackBar(
-        content: Text('Saved "$name" - ${images.length} page${images.length == 1 ? '' : 's'}'),
-      ));
+      final vault = ref.read(vaultRepositoryProvider);
+      final doc = await vault.createDocument(name);
+      await vault.addScannedPages(doc.id, images);
+      
+      if (!context.mounted) return;
+      Navigator.of(context).pop(); 
+      await ref.read(documentIndexProvider.notifier).refresh();
     } catch (e) {
       if (context.mounted) Navigator.of(context).pop();
       messenger.showSnackBar(SnackBar(content: Text('Could not save: $e')));
@@ -713,6 +633,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     if (result == null || result.files.single.path == null) return [];
 
+    if (!context.mounted) return [];
     _showProcessing(context);
     try {
       final pdfDoc = await PdfDocument.openFile(result.files.single.path!);
@@ -738,7 +659,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           uiImage.dispose();
         }
       }
-      pdfDoc.dispose();
+      await pdfDoc.dispose();
       if (!context.mounted) return [];
       Navigator.of(context).pop();
       return images;
