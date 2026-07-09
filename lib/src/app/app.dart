@@ -9,6 +9,7 @@ import '../features/auth/pin_screen.dart';
 import 'constants.dart';
 import 'providers.dart';
 import 'theme.dart';
+import '../features/onboarding/splash_screen.dart';
 
 class ScanVaultApp extends ConsumerWidget {
   const ScanVaultApp({super.key});
@@ -35,32 +36,29 @@ class _RootGate extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final connection = ref.watch(vaultConnectionProvider);
     return connection.when(
-      loading: () => const _Splash(),
+      loading: () => const Scaffold(
+        backgroundColor: ScanVaultTheme.cream,
+      ), // Empty screen before animation starts
       error: (err, _) {
-        // A lost permission gets the dedicated reconnect flow; anything else is
-        // shown as a recoverable error over the connect screen.
         if (err is VaultFailure && err.kind == FailureKind.permissionLost) {
           return ReconnectScreen(message: err.message);
         }
         return ReconnectScreen(message: '$err');
       },
       data: (config) {
-        if (config == null) return const ConnectScreen();
-        final prefs = ref.read(vaultPrefsProvider);
-        if (prefs.hasPin) return const PinScreen();
-        return const HomeScreen();
+        Widget nextScreen;
+        if (config == null) {
+          nextScreen = const ConnectScreen();
+        } else {
+          final prefs = ref.read(vaultPrefsProvider);
+          if (prefs.hasPin) {
+            nextScreen = const PinScreen();
+          } else {
+            nextScreen = const HomeScreen();
+          }
+        }
+        return SplashScreen(child: nextScreen);
       },
-    );
-  }
-}
-
-class _Splash extends StatelessWidget {
-  const _Splash();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: CircularProgressIndicator()),
     );
   }
 }

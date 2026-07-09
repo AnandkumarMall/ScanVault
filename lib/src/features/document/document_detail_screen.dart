@@ -1,8 +1,10 @@
-
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../app/theme.dart';
 import '../../domain/models/document.dart';
 import '../../domain/models/doc_page.dart';
 import 'package:cunning_document_scanner/cunning_document_scanner.dart';
@@ -10,8 +12,6 @@ import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 
 import 'page_viewer_screen.dart';
 
-/// Screen for viewing and managing pages within a document.
-/// Mirrors OKEN's document-detail screen: numbered pages + "add new page" tile.
 class DocumentDetailScreen extends ConsumerStatefulWidget {
   const DocumentDetailScreen({
     super.key,
@@ -168,7 +168,7 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          ElevatedButton(
             onPressed: () => Navigator.of(context).pop(controller.text),
             child: const Text('Save'),
           ),
@@ -266,7 +266,7 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
               SizedBox(
                 width: 24,
                 height: 24,
-                child: CircularProgressIndicator(strokeWidth: 3),
+                child: CircularProgressIndicator(strokeWidth: 3, color: ScanVaultTheme.teal),
               ),
               SizedBox(width: 20),
               Text('Processing…'),
@@ -279,20 +279,26 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colors = ScanVaultColors(isDark);
+
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: colors.bgBase,
+        body: Center(child: CircularProgressIndicator(color: colors.accentTeal)),
       );
     }
 
     if (_document == null) {
       return Scaffold(
+        backgroundColor: colors.bgBase,
         appBar: AppBar(title: const Text('Document')),
         body: const Center(child: Text('Document not found')),
       );
     }
 
     return Scaffold(
+      backgroundColor: colors.bgBase,
       appBar: AppBar(
         title: Text(_document!.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
@@ -308,6 +314,7 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
               onPressed: () => setState(() => _isMultiSelect = true),
             ),
             PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, color: colors.textPrimary),
               onSelected: (value) {
                 if (value == 'export_pdf') {
                   _exportPdf();
@@ -327,8 +334,10 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
               ],
             ),
           ] else ...[
-            Text('${_selectedIndices.length} selected'),
+            Center(child: Text('${_selectedIndices.length} selected', style: const TextStyle(fontWeight: FontWeight.w600))),
+            const SizedBox(width: 8),
             PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, color: colors.textPrimary),
               onSelected: (value) {
                 if (value == 'export_pdf') {
                   _exportPdf();
@@ -348,47 +357,46 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
               ],
             ),
             IconButton(
+              tooltip: 'Delete selected',
+              icon: const Icon(Icons.delete_outlined, color: ScanVaultTheme.error),
+              onPressed: _selectedIndices.isEmpty ? null : _deleteSelectedPages,
+            ),
+            IconButton(
               tooltip: 'Cancel',
               icon: const Icon(Icons.close),
               onPressed: _clearSelection,
-            ),
-            IconButton(
-              tooltip: 'Delete selected',
-              icon: const Icon(Icons.delete_outlined),
-              onPressed: _selectedIndices.isEmpty ? null : _deleteSelectedPages,
             ),
           ],
         ],
       ),
       bottomNavigationBar: BottomAppBar(
+        color: colors.bgSurface,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             TextButton.icon(
               onPressed: _isMultiSelect ? null : _addPage,
-              icon: const Icon(Icons.add_a_photo, color: Colors.grey),
-              label: const Text('Add', style: TextStyle(color: Colors.grey)),
+              icon: Icon(Icons.add_a_photo, color: _isMultiSelect ? colors.textTertiary : colors.accentTeal),
+              label: Text('Add', style: TextStyle(color: _isMultiSelect ? colors.textTertiary : colors.accentTeal)),
             ),
             TextButton.icon(
               onPressed: _exportImages,
-              icon: const Icon(Icons.share, color: Colors.grey),
-              label: const Text('Share', style: TextStyle(color: Colors.grey)),
+              icon: Icon(Icons.share, color: colors.textPrimary),
+              label: Text('Share', style: TextStyle(color: colors.textPrimary)),
             ),
             TextButton.icon(
               onPressed: _exportPdf,
-              icon: const Icon(Icons.picture_as_pdf, color: Colors.grey),
-              label: const Text('Export PDF', style: TextStyle(color: Colors.grey)),
+              icon: Icon(Icons.picture_as_pdf, color: colors.textPrimary),
+              label: Text('Export PDF', style: TextStyle(color: colors.textPrimary)),
             ),
           ],
         ),
       ),
-      body: _buildBody(),
+      body: _buildBody(colors),
     );
   }
 
-
-
-  Widget _buildBody() {
+  Widget _buildBody(ScanVaultColors colors) {
     if (_document!.pages.isEmpty) {
       return Center(
         child: Column(
@@ -397,19 +405,17 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
             Icon(
               Icons.insert_drive_file_outlined,
               size: 64,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              color: colors.textTertiary.withValues(alpha: 0.3),
             ),
             const SizedBox(height: 16),
             Text(
               'No pages yet',
-              style: Theme.of(context).textTheme.titleMedium,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(color: colors.textSecondary),
             ),
             const SizedBox(height: 8),
             Text(
-              'Tap "Add page" to get started.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+              'Tap "Add" below to get started.',
+              style: TextStyle(color: colors.textSecondary),
             ),
           ],
         ),
@@ -417,22 +423,15 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
     }
 
     return ReorderableGridView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 180,
         childAspectRatio: 0.75,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
       ),
-      itemCount: _document!.pages.length + 1, // +1 for "Add page" tile
+      itemCount: _document!.pages.length,
       itemBuilder: (context, index) {
-        if (index == _document!.pages.length) {
-          return _AddPageTile(
-            key: ValueKey('add_page'),
-            onTap: _addPage,
-            isMultiSelect: _isMultiSelect,
-          );
-        }
         return _PageTile(
           key: ValueKey(_document!.pages[index].id),
           documentId: widget.documentId,
@@ -440,6 +439,7 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
           pageNumber: index + 1,
           isSelected: _selectedIndices.contains(index),
           isMultiSelect: _isMultiSelect,
+          colors: colors,
           onTap: () => _isMultiSelect
               ? _toggleMultiSelect(index)
               : _editPage(index),
@@ -450,7 +450,7 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
       onReorder: (oldIndex, newIndex) async {
         if (oldIndex >= _document!.pages.length ||
             newIndex >= _document!.pages.length) {
-          return; // Don't reorder the "Add page" tile
+          return;
         }
         if (oldIndex < newIndex) newIndex -= 1;
 
@@ -476,7 +476,6 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
   }
 }
 
-/// Tile for a single page in the document grid.
 class _PageTile extends ConsumerWidget {
   const _PageTile({
     required this.documentId,
@@ -484,6 +483,7 @@ class _PageTile extends ConsumerWidget {
     required this.pageNumber,
     required this.isSelected,
     required this.isMultiSelect,
+    required this.colors,
     required this.onTap,
     required this.onLongPress,
     required this.onRetake,
@@ -495,84 +495,85 @@ class _PageTile extends ConsumerWidget {
   final int pageNumber;
   final bool isSelected;
   final bool isMultiSelect;
+  final ScanVaultColors colors;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final VoidCallback onRetake;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-
-    return Stack(
-      children: [
-        Card(
-          clipBehavior: Clip.antiAlias,
-          color: isSelected
-              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
-              : null,
-          child: InkWell(
-            onTap: onTap,
-            onLongPress: isMultiSelect ? onLongPress : null,
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: _PageThumbnail(documentId: documentId, page: page),
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.bgSurface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: colors.textPrimary.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: Border.all(
+          color: isSelected ? colors.accentTeal : colors.glassBorder, 
+          width: isSelected ? 3 : 1
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(isSelected ? 13 : 16),
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: isMultiSelect ? onLongPress : null,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: _PageThumbnail(documentId: documentId, page: page),
+              ),
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$pageNumber',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
                 ),
-                // Page number badge
+              ),
+              if (isMultiSelect)
                 Positioned(
                   top: 8,
-                  left: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '$pageNumber',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
+                  right: 8,
+                  child: Checkbox(
+                    value: isSelected,
+                    onChanged: (_) => onLongPress(),
+                    fillColor: WidgetStateProperty.resolveWith((states) {
+                      if (states.contains(WidgetState.selected)) {
+                        return colors.accentTeal;
+                      }
+                      return colors.bgSurface;
+                    }),
+                    checkColor: colors.bgBase,
                   ),
                 ),
-                // Selection checkbox overlay
-                if (isMultiSelect)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Checkbox(
-                      value: isSelected,
-                      onChanged: (_) => onLongPress(),
-                      fillColor: WidgetStateProperty.resolveWith((states) {
-                        if (states.contains(WidgetState.selected)) {
-                          return theme.colorScheme.primary;
-                        }
-                        return theme.colorScheme.surface;
-                      }),
-                    ),
+              if (!isMultiSelect)
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: IconButton(
+                    icon: const Icon(Icons.more_vert, color: Colors.white, shadows: [Shadow(blurRadius: 4, color: Colors.black)]),
+                    onPressed: () => _showContextMenu(context, ref),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
-                if (!isMultiSelect)
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: IconButton(
-                      icon: const Icon(Icons.more_vert, color: Colors.white, shadows: [Shadow(blurRadius: 2, color: Colors.black54)]),
-                      onPressed: () => _showContextMenu(context, ref),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -585,15 +586,15 @@ class _PageTile extends ConsumerWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.edit_outlined),
-              title: const Text('Retake'),
+              title: const Text('Edit / Crop'),
               onTap: () {
                 Navigator.of(context).pop();
-                onRetake();
+                onTap(); // Reuse edit logic
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: const Text('Delete', style: TextStyle(color: Colors.red)),
+              leading: const Icon(Icons.delete_outline, color: ScanVaultTheme.error),
+              title: const Text('Delete', style: TextStyle(color: ScanVaultTheme.error)),
               onTap: () {
                 Navigator.of(context).pop();
                 _confirmDelete(context, ref);
@@ -616,8 +617,8 @@ class _PageTile extends ConsumerWidget {
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Cancel'),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: ScanVaultTheme.error),
             onPressed: () async {
               Navigator.of(context).pop();
               final repo = ref.read(vaultRepositoryProvider);
@@ -645,7 +646,6 @@ class _PageTile extends ConsumerWidget {
   }
 }
 
-/// Thumbnail for a page in the document grid.
 class _PageThumbnail extends ConsumerWidget {
   const _PageThumbnail({required this.documentId, required this.page});
 
@@ -654,14 +654,16 @@ class _PageThumbnail extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colors = ScanVaultColors(isDark);
+    
     final placeholder = ColoredBox(
-      color: theme.colorScheme.surfaceContainerHighest,
+      color: colors.bgElevated,
       child: Center(
         child: Icon(
           Icons.insert_drive_file_outlined,
           size: 40,
-          color: theme.colorScheme.onSurfaceVariant,
+          color: colors.textTertiary.withValues(alpha: 0.3),
         ),
       ),
     );
@@ -674,8 +676,6 @@ class _PageThumbnail extends ConsumerWidget {
       version: 0,
     )));
 
-    // We need the document ID for the provider key - use a custom key
-    // The provider will be called with the right docId in the actual usage
     return bytesAsync.when(
       loading: () => placeholder,
       error: (_, __) => placeholder,
@@ -689,59 +689,6 @@ class _PageThumbnail extends ConsumerWidget {
               gaplessPlayback: true,
               cacheWidth: 300,
             ),
-    );
-  }
-}
-
-/// "Add page" tile shown at the end of the grid.
-class _AddPageTile extends StatelessWidget {
-  const _AddPageTile({
-    required this.onTap,
-    required this.isMultiSelect,
-    super.key,
-  });
-
-  final VoidCallback onTap;
-  final bool isMultiSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    if (isMultiSelect) return const SizedBox.shrink();
-
-    final theme = Theme.of(context);
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      color: theme.colorScheme.surfaceContainerHighest,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Tap ',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                Icon(
-                  Icons.add_a_photo_outlined,
-                  size: 24,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                Text(
-                  ' to add new pages',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../app/providers.dart';
+import '../../app/theme.dart';
 
 import '../../domain/models/document.dart';
+import 'document_editor_screen.dart';
 
 class PageViewerScreen extends ConsumerStatefulWidget {
   const PageViewerScreen({
@@ -18,7 +20,6 @@ class PageViewerScreen extends ConsumerStatefulWidget {
   final Document document;
   final int initialIndex;
 
-
   @override
   ConsumerState<PageViewerScreen> createState() => _PageViewerScreenState();
 }
@@ -26,6 +27,8 @@ class PageViewerScreen extends ConsumerStatefulWidget {
 class _PageViewerScreenState extends ConsumerState<PageViewerScreen> {
   late PageController _pageController;
   late int _currentIndex;
+
+  // Removed hardcoded colors
 
   @override
   void initState() {
@@ -40,59 +43,28 @@ class _PageViewerScreenState extends ConsumerState<PageViewerScreen> {
     super.dispose();
   }
 
-  Future<void> _editCurrentPage() async {
-    final page = widget.document.pages[_currentIndex];
-    final repo = ref.read(vaultRepositoryProvider);
-
-    final originalBytes = await ref.read(
-      docFileBytesProvider((docId: widget.document.id, path: page.displayPath, version: 0)).future,
+  void _editCurrentPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => DocumentEditorScreen(
+          document: widget.document,
+          pageIndex: _currentIndex,
+        ),
+      ),
     );
-    
-    if (originalBytes == null || !mounted) return;
-
-    final tempDir = await getTemporaryDirectory();
-    final tempFile = File('${tempDir.path}/${page.id}_edit.jpg');
-    await tempFile.writeAsBytes(originalBytes);
-
-    if (!mounted) return;
-
-    final croppedFile = await ImageCropper().cropImage(
-      sourcePath: tempFile.path,
-      compressFormat: ImageCompressFormat.jpg,
-      compressQuality: 90,
-      uiSettings: [
-        AndroidUiSettings(
-            toolbarTitle: 'Crop & Rotate',
-            toolbarColor: Colors.black,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.original,
-            lockAspectRatio: false),
-      ],
-    );
-
-    if (croppedFile != null && mounted) {
-      final croppedBytes = await croppedFile.readAsBytes();
-      await repo.replacePage(widget.document.id, _currentIndex, croppedBytes);
-      
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Page updated successfully')),
-      );
-      
-      // Trigger a rebuild by forcing the bytes provider to refresh (it's autoDispose but we can just pop and let parent rebuild or we invalidate)
-      ref.invalidate(docFileBytesProvider((docId: widget.document.id, path: page.displayPath, version: 0)));
-      Navigator.of(context).pop();
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colors = ScanVaultColors(isDark);
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: colors.bgBase,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: Text('Page ${_currentIndex + 1} of ${widget.document.pages.length}'),
+        backgroundColor: colors.bgBase,
+        foregroundColor: colors.textPrimary,
+        title: Text('Page ${_currentIndex + 1} of ${widget.document.pages.length}', style: TextStyle(color: colors.textPrimary)),
+        iconTheme: IconThemeData(color: colors.textPrimary),
       ),
       body: PageView.builder(
         controller: _pageController,
@@ -113,10 +85,10 @@ class _PageViewerScreenState extends ConsumerState<PageViewerScreen> {
           )));
 
           return bytesAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, _) => const Center(child: Icon(Icons.error, color: Colors.white)),
+            loading: () => Center(child: CircularProgressIndicator(color: colors.accentTeal)),
+            error: (err, _) => Center(child: Icon(Icons.error, color: ScanVaultTheme.error)),
             data: (bytes) {
-              if (bytes == null) return const Center(child: Icon(Icons.error, color: Colors.white));
+              if (bytes == null) return Center(child: Icon(Icons.error, color: ScanVaultTheme.error));
               return InteractiveViewer(
                 minScale: 1.0,
                 maxScale: 5.0,
@@ -135,14 +107,14 @@ class _PageViewerScreenState extends ConsumerState<PageViewerScreen> {
         },
       ),
       bottomNavigationBar: BottomAppBar(
-        color: Colors.black,
+        color: colors.bgSurface,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             TextButton.icon(
               onPressed: _editCurrentPage,
-              icon: const Icon(Icons.crop, color: Colors.white),
-              label: const Text('Edit / Crop', style: TextStyle(color: Colors.white)),
+              icon: Icon(Icons.crop, color: colors.textPrimary),
+              label: Text('Edit Page', style: TextStyle(color: colors.textPrimary)),
             ),
           ],
         ),
