@@ -1,20 +1,13 @@
-import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image/image.dart' as img;
-import 'package:pdfrx/pdfrx.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../app/providers.dart';
 import '../../domain/models/document.dart';
-import '../../data/vault/vault_repository.dart';
 import '../../domain/models/doc_page.dart';
-import 'page_viewer_screen.dart';
 import 'package:cunning_document_scanner/cunning_document_scanner.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
+
 import 'page_viewer_screen.dart';
 
 /// Screen for viewing and managing pages within a document.
@@ -53,12 +46,6 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
         _isLoading = false;
       });
     }
-  }
-
-  Future<void> _refresh() async {
-    _selectedIndices.clear();
-    _isMultiSelect = false;
-    await _loadDocument();
   }
 
   void _toggleMultiSelect(int index) {
@@ -115,7 +102,7 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
     
     List<String> images = [];
     try {
-      images = await CunningDocumentScanner.getPictures(isGalleryImportAllowed: true) ?? [];
+      images = await CunningDocumentScanner.getPictures() ?? [];
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Scanner error: $e')));
@@ -159,6 +146,7 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
         fullscreenDialog: true,
       ),
     );
+    if (mounted) await _loadDocument();
   }
 
   Future<void> _renameDocument() async {
@@ -398,55 +386,7 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
     );
   }
 
-  Future<List<Uint8List>> _pickAndRasterizePdf(BuildContext context) async {
-    final result = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf'],
-    );
-    if (result == null || result.files.single.path == null) return [];
 
-    if (!context.mounted) return [];
-    _showProcessing(context);
-    try {
-      final pdfDoc = await PdfDocument.openFile(result.files.single.path!);
-      final images = <Uint8List>[];
-      for (final page in pdfDoc.pages) {
-        // Render at a balanced resolution (1.5x scale) to save memory and space
-        final image = await page.render(
-          width: (page.width * 1.5).toInt(),
-          height: (page.height * 1.5).toInt(),
-        );
-        if (image != null) {
-          final uiImage = await image.createImage();
-          final byteData = await uiImage.toByteData();
-          if (byteData != null) {
-            final rawBytes = byteData.buffer.asUint8List();
-            // Convert RGBA to JPEG using package:image
-            final imgImg = img.Image.fromBytes(
-              width: uiImage.width,
-              height: uiImage.height,
-              bytes: rawBytes.buffer,
-              numChannels: 4,
-            );
-            images.add(img.encodeJpg(imgImg, quality: 80));
-          }
-          uiImage.dispose();
-        }
-      }
-      await pdfDoc.dispose();
-      if (!context.mounted) return [];
-      Navigator.of(context).pop(); // dismiss loading
-      return images;
-    } catch (e) {
-      if (context.mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to import PDF: $e')),
-        );
-      }
-      return [];
-    }
-  }
 
   Widget _buildBody() {
     if (_document!.pages.isEmpty) {

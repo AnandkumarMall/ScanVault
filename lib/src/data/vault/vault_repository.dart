@@ -268,6 +268,51 @@ class VaultRepository {
     return finalDoc;
   }
 
+  Future<Document> replacePage(
+    String docId,
+    int pageIndex,
+    Uint8List newBytes, {
+    DateTime? now,
+  }) async {
+    final doc = await _requireDocument(docId);
+    if (pageIndex < 0 || pageIndex >= doc.pages.length) return doc;
+
+    final docsUri = await _requireDocumentsUri();
+    final docDir = await _gateway.ensureDir(docsUri, [docId]);
+    final originalUri = await _gateway.ensureDir(docDir, [VaultLayout.originalDir]);
+    final thumbsUri = await _gateway.ensureDir(docDir, [VaultLayout.thumbsDir]);
+
+    final oldPage = doc.pages[pageIndex];
+    
+    final pageId = _uuid.v4();
+    final fileName = '$pageId.jpg';
+    
+    await _gateway.writeBytes(originalUri, fileName, newBytes, mime: 'image/jpeg');
+
+    final imgObj = img.decodeImage(newBytes);
+    if (imgObj != null) {
+      final thumbnail = img.copyResize(imgObj, width: 256);
+      final thumbBytes = img.encodeJpg(thumbnail, quality: 70);
+      await _gateway.writeBytes(thumbsUri, fileName, thumbBytes, mime: 'image/jpeg');
+    }
+
+    final newPage = DocPage(
+      id: pageId,
+      originalPath: '${VaultLayout.originalDir}/$fileName',
+      thumbPath: '${VaultLayout.thumbsDir}/$fileName',
+    );
+
+    final newPages = List<DocPage>.from(doc.pages);
+    newPages[pageIndex] = newPage;
+
+    await _deletePageFiles(docId, oldPage);
+
+    return saveDocument(
+      doc.copyWith(pages: newPages),
+      now: now,
+    );
+  }
+
   Future<Document> addScannedPages(
     String docId,
     List<String> imagePaths, {

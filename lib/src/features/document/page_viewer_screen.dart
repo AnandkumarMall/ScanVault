@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
+import 'package:image_cropper/image_cropper.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../app/providers.dart';
 
 import '../../domain/models/document.dart';
@@ -42,12 +45,44 @@ class _PageViewerScreenState extends ConsumerState<PageViewerScreen> {
     final repo = ref.read(vaultRepositoryProvider);
 
     final originalBytes = await ref.read(
-      docFileBytesProvider((docId: widget.document.id, path: page.originalPath, version: 0)).future,
+      docFileBytesProvider((docId: widget.document.id, path: page.displayPath, version: 0)).future,
     );
     
     if (originalBytes == null || !mounted) return;
 
+    final tempDir = await getTemporaryDirectory();
+    final tempFile = File('${tempDir.path}/${page.id}_edit.jpg');
+    await tempFile.writeAsBytes(originalBytes);
 
+    if (!mounted) return;
+
+    final croppedFile = await ImageCropper().cropImage(
+      sourcePath: tempFile.path,
+      compressFormat: ImageCompressFormat.jpg,
+      compressQuality: 90,
+      uiSettings: [
+        AndroidUiSettings(
+            toolbarTitle: 'Crop & Rotate',
+            toolbarColor: Colors.black,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.original,
+            lockAspectRatio: false),
+      ],
+    );
+
+    if (croppedFile != null && mounted) {
+      final croppedBytes = await croppedFile.readAsBytes();
+      await repo.replacePage(widget.document.id, _currentIndex, croppedBytes);
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Page updated successfully')),
+      );
+      
+      // Trigger a rebuild by forcing the bytes provider to refresh (it's autoDispose but we can just pop and let parent rebuild or we invalidate)
+      ref.invalidate(docFileBytesProvider((docId: widget.document.id, path: page.displayPath, version: 0)));
+      Navigator.of(context).pop();
+    }
   }
 
   @override

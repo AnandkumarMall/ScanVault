@@ -7,8 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 abstract final class ScanVaultTheme {
   // Shared Colors
   static const Color _primaryAccent = Color(0xFF4F46E5); // Indigo 600
-  static const Color _success = Color(0xFF10B981); // Emerald 500
-  static const Color _warning = Color(0xFFF59E0B); // Amber 500
+
   static const Color _danger = Color(0xFFEF4444); // Red 500
 
   // Dark Mode Colors

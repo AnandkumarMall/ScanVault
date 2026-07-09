@@ -10,13 +10,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:printing/printing.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../app/providers.dart';
 import '../../domain/models/document.dart';
 import '../../domain/models/index_entry.dart';
-import '../../data/vault/vault_repository.dart';
 import '../document/document_detail_screen.dart';
 import '../auth/pin_screen.dart';
 
@@ -546,7 +544,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
     } else {
       try {
-        images = await CunningDocumentScanner.getPictures(isGalleryImportAllowed: true) ?? [];
+        images = await CunningDocumentScanner.getPictures() ?? [];
       } catch (e) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Scanner error: $e')));
