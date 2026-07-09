@@ -20,8 +20,7 @@ class PdfExportService {
     );
 
     for (final page in document.pages) {
-      final path = page.processedPath;
-      if (path == null) continue;
+      final path = page.displayPath;
       final bytes = await vault.readDocumentFile(document.id, path);
       if (bytes != null) {
         final image = pw.MemoryImage(bytes);

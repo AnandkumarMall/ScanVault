@@ -239,10 +239,10 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
 
       for (int i = 0; i < pagesToExport.length; i++) {
         final page = pagesToExport[i];
-        if (page.processedPath == null) continue;
+        final path = page.displayPath;
         final bytes = await repo.readDocumentFile(
           widget.documentId,
-          page.processedPath!,
+          path,
         );
         if (bytes != null) {
           files.add(XFile.fromData(
