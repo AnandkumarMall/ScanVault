@@ -11,6 +11,8 @@ import 'package:cunning_document_scanner/cunning_document_scanner.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 
 import 'page_viewer_screen.dart';
+import '../../utils/document_name_service.dart';
+import '../../widgets/name_prompt_dialog.dart';
 
 class DocumentDetailScreen extends ConsumerStatefulWidget {
   const DocumentDetailScreen({
@@ -81,6 +83,17 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
         indices,
       );
       if (!mounted) return;
+      
+      if (updated.pages.isEmpty) {
+        await repo.deleteDocument(widget.documentId);
+        ref.read(documentIndexProvider.notifier).refresh();
+        Navigator.of(context).pop();
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Document deleted (no pages left)')),
+        );
+        return;
+      }
+
       setState(() {
         _document = updated;
         _selectedIndices.clear();
@@ -152,35 +165,31 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
   Future<void> _renameDocument() async {
     if (_document == null) return;
 
-    final controller = TextEditingController(text: _document!.name);
+    final existingDocs = ref.read(documentIndexProvider).valueOrNull ?? [];
+    final existingNames = existingDocs.map((e) => e.name);
+    final service = DocumentNameService(existingNames, currentName: _document!.name);
+
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Rename document'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Name'),
-          onSubmitted: (v) => Navigator.of(context).pop(v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Save'),
-          ),
-        ],
+      builder: (_) => NamePromptDialog(
+        title: 'Rename document',
+        initialName: _document!.name,
+        nameService: service,
       ),
     );
 
     if (name != null && name.trim().isNotEmpty && mounted) {
       final repo = ref.read(vaultRepositoryProvider);
-      final updated = await repo.renameDocument(widget.documentId, name.trim());
-      if (updated != null && mounted) {
-        setState(() => _document = updated);
+      try {
+        final updated = await repo.renameDocument(widget.documentId, name.trim());
+        if (updated != null && mounted) {
+          setState(() => _document = updated);
+          ref.read(documentIndexProvider.notifier).refresh();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Rename failed: $e')));
+        }
       }
     }
   }

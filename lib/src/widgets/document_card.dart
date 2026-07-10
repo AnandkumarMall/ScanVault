@@ -10,10 +10,14 @@ class DocumentCard extends ConsumerWidget {
     super.key,
     required this.entry,
     required this.onTap,
+    this.onLongPress,
+    this.isSelected = false,
   });
 
   final IndexEntry entry;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final bool isSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -23,6 +27,7 @@ class DocumentCard extends ConsumerWidget {
 
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
@@ -49,6 +54,28 @@ class DocumentCard extends ConsumerWidget {
                         ? _buildCover(ref, entry.id, entry.coverPath!, theme)
                         : _buildPlaceholder(theme),
                   ),
+                  if (isSelected)
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: ScanVaultTheme.teal.withValues(alpha: 0.3),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                        ),
+                      ),
+                    ),
+                  if (isSelected)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          color: ScanVaultTheme.teal,
+                          shape: BoxShape.circle,
+                        ),
+                        padding: const EdgeInsets.all(4),
+                        child: const Icon(Icons.check, color: Colors.white, size: 16),
+                      ),
+                    ),
                   Positioned(
                     bottom: 8,
                     right: 8,

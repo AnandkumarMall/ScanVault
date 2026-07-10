@@ -73,7 +73,8 @@ class _DocumentEditorScreenState extends ConsumerState<DocumentEditorScreen> {
 
   Future<void> _loadInitialBytes() async {
     final page = widget.document.pages[widget.pageIndex];
-    final path = page.processedPath ?? page.originalPath;
+    // Always load the original path to allow non-destructive re-editing
+    final path = page.originalPath;
     final bytes = await ref.read(docFileBytesProvider((docId: widget.document.id, path: path, version: 0)).future);
     if (mounted && bytes != null) {
       setState(() {

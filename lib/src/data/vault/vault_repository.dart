@@ -7,6 +7,7 @@ import '../../core/json_utils.dart';
 import '../../domain/models/doc_page.dart';
 import '../../domain/models/document.dart';
 import '../../domain/models/index_entry.dart';
+import '../../utils/document_name_service.dart';
 import '../../domain/models/vault_config.dart';
 import 'saf_gateway.dart';
 import 'vault_layout.dart';
@@ -143,9 +144,19 @@ class VaultRepository {
     await _gateway.writeStringAtomic(root, VaultLayout.indexFile, payload);
   }
 
+  Future<void> _ensureUniqueName(String name, {String? currentName}) async {
+    final index = await loadIndex();
+    final names = index.map((e) => e.name);
+    final service = DocumentNameService(names, currentName: currentName);
+    if (service.isDuplicate(name)) {
+      throw const VaultFailure(FailureKind.unknown, 'A document with this name already exists.');
+    }
+  }
+
   // ── Documents ────────────────────────────────────────────────────────────
 
   Future<Document> createDocument(String name, {DateTime? now}) async {
+    await _ensureUniqueName(name);
     final docsUri = await _requireDocumentsUri();
     final id = _uuid.v4();
     final ts = now ?? DateTime.now();
@@ -268,6 +279,48 @@ class VaultRepository {
     return finalDoc;
   }
 
+  /// Creates a copy of an existing document with a new name.
+  Future<Document> copyDocument(String docId, String newName) async {
+    final oldDoc = await readDocument(docId);
+    if (oldDoc == null) throw VaultFailure(FailureKind.unknown, 'Document not found');
+
+    final newDoc = await createDocument(newName);
+    final docsUri = await _requireDocumentsUri();
+    final newDocDir = await _gateway.ensureDir(docsUri, [newDoc.id]);
+    final originalUri = await _gateway.ensureDir(newDocDir, [VaultLayout.originalDir]);
+    final processedUri = await _gateway.ensureDir(newDocDir, [VaultLayout.processedDir]);
+    final thumbsUri = await _gateway.ensureDir(newDocDir, [VaultLayout.thumbsDir]);
+
+    final newPages = <DocPage>[];
+
+    for (final oldPage in oldDoc.pages) {
+      final originalBytes = await readDocumentFile(docId, oldPage.originalPath);
+      final processedBytes = oldPage.processedPath != null ? await readDocumentFile(docId, oldPage.processedPath!) : null;
+      final thumbBytes = oldPage.thumbPath != null ? await readDocumentFile(docId, oldPage.thumbPath!) : null;
+
+      if (originalBytes == null) continue;
+
+      final pageId = _uuid.v4();
+      final fileName = '$pageId.jpg';
+
+      await _gateway.writeBytes(originalUri, fileName, originalBytes, mime: 'image/jpeg');
+      if (processedBytes != null) {
+        await _gateway.writeBytes(processedUri, fileName, processedBytes, mime: 'image/jpeg');
+      }
+      if (thumbBytes != null) {
+        await _gateway.writeBytes(thumbsUri, fileName, thumbBytes, mime: 'image/jpeg');
+      }
+
+      newPages.add(DocPage(
+        id: pageId,
+        originalPath: '${VaultLayout.originalDir}/$fileName',
+        processedPath: processedBytes != null ? '${VaultLayout.processedDir}/$fileName' : null,
+        thumbPath: thumbBytes != null ? '${VaultLayout.thumbsDir}/$fileName' : null,
+      ));
+    }
+    return saveDocument(newDoc.copyWith(pages: newPages));
+  }
+
   Future<Document> replacePage(
     String docId,
     int pageIndex,
@@ -386,6 +439,7 @@ class VaultRepository {
   Future<Document?> renameDocument(String id, String newName) async {
     final doc = await readDocument(id);
     if (doc == null) return null;
+    await _ensureUniqueName(newName, currentName: doc.name);
     return saveDocument(doc.copyWith(name: newName));
   }
 
